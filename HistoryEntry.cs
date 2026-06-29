@@ -8,6 +8,7 @@ public enum HistoryAction
     Placed,
     Removed,
     Moved,
+    Rotated,
 }
 
 /// <summary>One row in the edit-history log.</summary>
@@ -17,8 +18,9 @@ public readonly record struct HistoryEntry(
     int ObjectIndex,
     uint FurnitureId,
     string ItemName,
-    Vector3 Position,        // Placed/Removed: the item's location. Moved: the NEW location.
-    float Rotation,          // radians. Moved: the NEW rotation.
-    Vector3? FromPosition,   // Moved only: the previous location.
-    float FromRotation,      // Moved only: the previous rotation (radians).
+    Vector3 Position,        // Placed/Removed: the item's location. Moved/Rotated: the NEW location.
+    float Rotation,          // radians. Moved/Rotated: the NEW rotation.
+    Vector3? FromPosition,   // Moved/Rotated only: the previous location.
+    float FromRotation,      // Moved/Rotated only: the previous rotation (radians).
+    ulong HouseId,           // which house this happened in (for multi-house disambiguation)
     ushort TerritoryId);

@@ -1,49 +1,65 @@
 # Housing History
 
 A Dalamud plugin that keeps a timestamped, **read-only** log of furnishings you
-**place**, **remove**, and **move** inside your house — with coordinates — so
-when you forget what you just changed (or move something and want to put it
-back), you can check. Complementary to *Burning Down the House*; it does not
-move or write anything, it only watches.
+**place**, **remove**, **move**, and **rotate** inside your house — with
+coordinates — so when you forget what you just changed (or move something and
+want to put it back), you can check. Complementary to *Burning Down the House*;
+it does not move or write anything, it only watches.
 
-Open the log in-game with `/houselog`.
+Open the log in-game with `/houselog`. Run `/houselog dump` to log a
+diagnostics snapshot (handy after a patch).
+
+## Features
+
+- **Place / Remove / Move / Rotate** tracking, each with coordinates.
+- **Click any coordinate to copy** `X Y Z` to the clipboard — the greyed "from"
+  line of a move is the value you paste back into BDTH to undo it.
+- **Search** box to filter by item name.
+- **Persists across sessions** (stored in the plugin config dir), so yesterday's
+  changes are still there.
+- **Multi-house aware** — entries are tagged with the house they happened in,
+  and the baseline reseeds when you move to a different house.
 
 ## How it works
 
-- Every ~1s, on the framework thread, it snapshots the indoor furniture set via
-  `HousingManager → GetFurnitureManager() → FurnitureMemory`, keyed by each
-  object's stable `HousingFurniture.Index`. Per item it records id, position,
-  rotation, and stain.
+- A few times a second (throttled), on the framework thread, it snapshots the
+  indoor furniture set via `HousingManager → GetFurnitureManager() →
+  FurnitureMemory`, keyed by each object's stable `HousingFurniture.Index`. Per
+  item it records id, position, rotation, and stain.
+- `HousingFurnitureManager.LastUpdate` is checked first; if furniture hasn't
+  changed since the last processed snapshot, the diff is skipped entirely.
 - It diffs against the previous snapshot:
-  - index appears → **Placed** (logs coordinates)
-  - index gone → **Removed** (logs last-known coordinates)
-  - same index, position/rotation changed beyond a small epsilon → **Moved**
-    (logs old → new). Copy the old coordinates back into BDTH to undo a move.
+  - index appears → **Placed**; index gone → **Removed**
+  - same index, position changed → **Moved**; rotation only → **Rotated**
   - same index, different furnishing id → slot reuse → Removed + Placed
-- Dragging fires many tiny updates; successive moves of the same object within
-  5s **coalesce** into one row that keeps the original "from" and updates the
-  "to", so you see the net move.
-- The first snapshot after you enter a house is **seeded silently** so your
-  existing layout isn't dumped into the log. Leaving/changing zones resets it.
+- Dragging/turning fires many tiny updates; successive moves of the same object
+  within 5s **coalesce** into one row (a Rotated that then moves upgrades to
+  Moved), so you see the net change.
+- The first snapshot after entering a house is **seeded silently**. The read
+  loop is wrapped so a struct mismatch after a patch fails soft (logs once,
+  pauses) instead of crashing or spamming.
 
-## Status / things to verify
+## Status / things to verify on first run
 
-This compiles against **Dalamud.NET.Sdk 15.0.0** and current FFXIVClientStructs
-field names (`HousingManager`, `HousingFurnitureManager._furnitureMemory`,
-`HousingFurniture.{Id,Position,Rotation,Index,Stain}`). Confirm on first run:
+Compiles against **Dalamud.NET.Sdk 15.0.0** and current FFXIVClientStructs field
+names. Confirm after the first build:
 
-1. **`FurnitureMemory` accessor name** — the source-generated accessor for the
-   internal `_furnitureMemory` fixed array. If the build can't find it, check
-   the generated name in your ClientStructs version.
+1. **`FurnitureMemory` accessor name** — generated accessor for the internal
+   `_furnitureMemory` fixed array; if the build can't find it, check the name in
+   your ClientStructs version.
 2. **Name resolution** — `HousingFurniture.Id` is documented as `(0x20000 | Id)`
-   indoors. We look the raw id up in the `HousingFurniture` Excel sheet and fall
-   back to `Furnishing #N` on a miss. If you see lots of `Furnishing #N`, adjust
-   the key in `NameResolver.cs`.
+   indoors. We try the raw id against the `HousingFurniture` Excel sheet and fall
+   back to `Furnishing #N`. Lots of `Furnishing #N`? Adjust the key in
+   `NameResolver.cs`.
 3. **`Index` stability** — move tracking assumes `HousingFurniture.Index` is a
-   stable per-object id within a session. If moves show up as Removed+Placed
-   pairs, the assumption is wrong on your version and the key needs revisiting.
-4. **Rotation units** — displayed as degrees assuming `Rotation` is radians. If
-   the angle looks wrong, adjust `Format()` in `MainWindow.cs`.
+   stable per-object id within a session. If moves log as Removed+Placed pairs,
+   that assumption is wrong on your version.
+4. **Rotation units** — shown as degrees assuming radians; fix `Format()` in
+   `MainWindow.cs` if angles look wrong.
+5. **History persistence** — uses `System.Text.Json` with `IncludeFields`. If the
+   saved file doesn't round-trip, switch to an explicit DTO.
+
+`/houselog dump` prints all of this state to `/xllog` in one shot — use it first.
 
 ## Building
 
@@ -59,14 +75,28 @@ field names (`HousingManager`, `HousingFurnitureManager._furnitureMemory`,
 
 ### On your Mac
 No .NET SDK installed, and FFXIV+Dalamud only runs on Mac via **XIV-on-Mac**
-(Wine). Options:
-- **Recommended:** edit here, build/test on a Windows PC or VM.
-- **All-Mac:** install the .NET SDK (`brew install dotnet-sdk`), set the
-  `DALAMUD_HOME` env var to the `dev` lib folder inside your XIV-on-Mac Wine
-  prefix, then `dotnet build`. Fiddlier, but works.
+(Wine). Edit here, build/test on a Windows PC or VM (recommended); or go all-Mac
+with `brew install dotnet-sdk` + `DALAMUD_HOME` pointing into the Wine prefix.
+
+## Maintenance — surviving Dalamud/game updates
+
+You can't freeze a Dalamud plugin: each API bump requires a recompile or the
+plugin is auto-disabled. The goal is cheap updates and fast detection.
+
+- **CI early warning** — `.github/workflows/build.yml` builds against the latest
+  Dalamud on every push and weekly. It tells you the moment an update breaks the
+  build, before users do. (Point it at `stg/latest.zip` to track staging.)
+- **Small struct surface** — all ClientStructs access lives in `HousingMonitor`;
+  one file to fix when housing structs shift.
+- **Fail soft** — the poll is wrapped in try/catch with a NaN guard, so a bad
+  read pauses gracefully instead of crashing.
+- **Diagnose fast** — `/houselog dump` verifies reads in-game after a patch.
+- **Test on staging** — run against Dalamud's staging branch right after a game
+  patch to catch runtime breakage early.
+- **Watch** the XIVLauncher & Dalamud Discord `#dev` and FFXIVClientStructs commits.
 
 ## Roadmap (later)
-- Track **stain/dye** changes (data already captured — just add a `Redyed` action)
-- Persist the log across sessions
+- Track **stain/dye** changes (data already captured — add a `Redyed` action)
+- Per-house filter in the UI (house id is already stored)
 - Per-item **undo** via BDTH-style position writing (leaves the read-only safe zone)
 - Outdoor / ward support

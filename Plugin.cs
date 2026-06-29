@@ -1,3 +1,4 @@
+using System;
 using Dalamud.Game.Command;
 using Dalamud.Interface.Windowing;
 using Dalamud.IoC;
@@ -35,7 +36,7 @@ public sealed class Plugin : IDalamudPlugin
 
         CommandManager.AddHandler(CommandName, new CommandInfo(OnCommand)
         {
-            HelpMessage = "Open the housing edit-history log.",
+            HelpMessage = "Open the housing edit-history log. \"/houselog dump\" logs a diagnostics snapshot.",
         });
 
         PluginInterface.UiBuilder.Draw += WindowSystem.Draw;
@@ -56,6 +57,15 @@ public sealed class Plugin : IDalamudPlugin
         CommandManager.RemoveHandler(CommandName);
     }
 
-    private void OnCommand(string command, string args) => MainWindow.Toggle();
+    private void OnCommand(string command, string args)
+    {
+        if (args.Trim().Equals("dump", StringComparison.OrdinalIgnoreCase))
+        {
+            Monitor.LogDiagnostics();
+            return;
+        }
+
+        MainWindow.Toggle();
+    }
     private void ToggleMainUi() => MainWindow.Toggle();
 }

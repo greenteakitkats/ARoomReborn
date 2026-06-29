@@ -1,0 +1,40 @@
+name: Build
+
+# Builds against the latest Dalamud on every push/PR AND on a weekly schedule,
+# so a Dalamud or FFXIVClientStructs update that breaks the plugin shows up here
+# before a user reports it. Swap latest.zip for stg/latest.zip to track staging.
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: '0 6 * * 1'   # Mondays 06:00 UTC — early warning
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.x
+
+      - name: Download Dalamud
+        shell: pwsh
+        run: |
+          # The Dalamud.NET.Sdk looks here by default on Windows, so no env var needed.
+          $dest = "$env:AppData\XIVLauncher\addon\Hooks\dev"
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          Invoke-WebRequest -Uri https://goatcorp.github.io/dalamud-distrib/latest.zip -OutFile latest.zip
+          Expand-Archive -Path latest.zip -DestinationPath $dest -Force
+
+      - name: Build
+        run: dotnet build -c Release --nologo
+
+      - name: Upload packaged plugin
+        uses: actions/upload-artifact@v4
+        with:
+          name: HousingHistory
+          path: bin/Release/**/HousingHistory/*
+          if-no-files-found: warn
