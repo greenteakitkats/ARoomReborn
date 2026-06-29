@@ -26,4 +26,5 @@ public readonly record struct HistoryEntry(
     byte Stain,              // current dye id. Redyed: the NEW dye.
     byte FromStain,          // Redyed only: the previous dye id.
     ulong HouseId,           // which house this happened in (for multi-house disambiguation)
-    ushort TerritoryId);
+    ushort TerritoryId,
+    bool WhileAway);         // true if detected on entry — i.e. changed since your last visit

@@ -9,14 +9,12 @@ using FFXIVClientStructs.FFXIV.Client.Game;
 namespace HousingHistory;
 
 /// <summary>
-/// Polls the indoor furniture set and logs placements, removals, moves, and rotations
-/// by diffing against the previous snapshot. Purely read-only — never writes to game memory.
+/// Polls the indoor furniture set and logs placements, removals, moves, rotations, and dye
+/// changes by diffing against the previous snapshot. On entering a house it diffs against the
+/// last-known layout to surface changes made while you were away. Purely read-only.
 /// </summary>
 public sealed class HousingMonitor : IDisposable
 {
-    // A single placed object's state at snapshot time.
-    private readonly record struct FurnitureRecord(uint Id, Vector3 Position, float Rotation, byte Stain);
-
     private const float PositionEpsilon = 0.01f; // yalms; ignore sub-threshold jitter
     private const float RotationEpsilon = 0.01f; // radians
     private const double MoveCoalesceSeconds = 5.0;
@@ -27,13 +25,19 @@ public sealed class HousingMonitor : IDisposable
     private readonly Plugin plugin;
     private readonly List<HistoryEntry> entries = new();
 
-    // Keyed by HousingFurniture.Index (a stable per-object id), so we can follow each
-    // physical item's position across snapshots — and duplicate furnishings stay distinct.
+    // Last-known full layout per house (houseId -> index -> state). Persisted so we can
+    // diff "what changed since last visit" — including changes made while you were away.
+    private Dictionary<ulong, Dictionary<int, FurnitureRecord>> savedLayouts = new();
+
+    // Live working state for the house we're currently inside.
     private Dictionary<int, FurnitureRecord> baseline = new();
     private bool haveBaseline;
     private ulong baselineHouseId;
     private long lastStamp = long.MinValue;
     private DateTime lastPoll = DateTime.MinValue;
+
+    // When true, entries created by the current diff are tagged as detected-on-entry.
+    private bool markAway;
 
     private bool dirty;
     private DateTime lastSave = DateTime.MinValue;
@@ -63,7 +67,7 @@ public sealed class HousingMonitor : IDisposable
 
     private void OnTerritoryChanged(ushort territory)
     {
-        // Changing zones invalidates the baseline; it reseeds silently on the next read.
+        // Changing zones invalidates the live baseline; it re-establishes on the next read.
         haveBaseline = false;
         baseline.Clear();
     }
@@ -122,19 +126,39 @@ public sealed class HousingMonitor : IDisposable
             return;
         }
 
-        // Reseed silently on first read or when we've entered a different house
-        // (two plots can share a TerritoryType, so we key off HouseId, not territory).
+        // First read after entering, or after moving to a different house (two plots can
+        // share a TerritoryType, so we key off HouseId, not territory).
         if (!haveBaseline || houseId != baselineHouseId)
         {
+            if (savedLayouts.TryGetValue(houseId, out var lastKnown))
+            {
+                // We've been here before — log what's different since last visit.
+                markAway = true;
+                try { DiffAndLog(lastKnown, current, houseId); }
+                finally { markAway = false; }
+            }
+            else
+            {
+                // First time we've ever seen this house — seed silently.
+                Plugin.Log.Information($"First visit to house {houseId:X}: {current.Count} item(s).");
+            }
+
             baseline = current;
             baselineHouseId = houseId;
             haveBaseline = true;
-            Plugin.Log.Information($"Baseline seeded: {current.Count} item(s) (house {houseId:X}).");
+            RememberLayout(houseId, current);
             return;
         }
 
         DiffAndLog(baseline, current, houseId);
         baseline = current;
+        RememberLayout(houseId, current);
+    }
+
+    private void RememberLayout(ulong houseId, Dictionary<int, FurnitureRecord> layout)
+    {
+        savedLayouts[houseId] = layout;
+        dirty = true;
     }
 
     private void DiffAndLog(Dictionary<int, FurnitureRecord> oldSet, Dictionary<int, FurnitureRecord> newSet, ulong houseId)
@@ -175,17 +199,18 @@ public sealed class HousingMonitor : IDisposable
 
     private void LogSimple(HistoryAction action, int index, FurnitureRecord r, ulong houseId)
         => AddEntry(new HistoryEntry(DateTime.Now, action, index, r.Id, NameResolver.Resolve(r.Id),
-            r.Position, r.Rotation, null, 0f, r.Stain, r.Stain, houseId, Plugin.ClientState.TerritoryType));
+            r.Position, r.Rotation, null, 0f, r.Stain, r.Stain, houseId, Plugin.ClientState.TerritoryType, markAway));
 
     private void LogRedyed(int index, FurnitureRecord before, FurnitureRecord now, ulong houseId)
         => AddEntry(new HistoryEntry(DateTime.Now, HistoryAction.Redyed, index, now.Id, NameResolver.Resolve(now.Id),
-            now.Position, now.Rotation, null, 0f, now.Stain, before.Stain, houseId, Plugin.ClientState.TerritoryType));
+            now.Position, now.Rotation, null, 0f, now.Stain, before.Stain, houseId, Plugin.ClientState.TerritoryType, markAway));
 
     private void LogMovement(HistoryAction action, int index, FurnitureRecord before, FurnitureRecord now, ulong houseId)
     {
-        // Coalesce a drag/turn (many tiny updates) into one row: keep the original "from",
+        // Coalesce a live drag/turn (many tiny updates) into one row: keep the original "from",
         // just refresh the "to". A rotate that becomes a move upgrades Rotated -> Moved.
-        if (entries.Count > 0)
+        // (Skipped for away-diffs, which produce at most one entry per object anyway.)
+        if (!markAway && entries.Count > 0)
         {
             var top = entries[0];
             if (top.ObjectIndex == index
@@ -202,7 +227,8 @@ public sealed class HousingMonitor : IDisposable
         }
 
         AddEntry(new HistoryEntry(DateTime.Now, action, index, now.Id, NameResolver.Resolve(now.Id),
-            now.Position, now.Rotation, before.Position, before.Rotation, now.Stain, before.Stain, houseId, Plugin.ClientState.TerritoryType));
+            now.Position, now.Rotation, before.Position, before.Rotation, now.Stain, before.Stain,
+            houseId, Plugin.ClientState.TerritoryType, markAway));
     }
 
     private void AddEntry(HistoryEntry entry)
@@ -214,7 +240,7 @@ public sealed class HousingMonitor : IDisposable
             entries.RemoveRange(max, entries.Count - max);
 
         dirty = true;
-        Plugin.Log.Debug($"{entry.Action}: {entry.ItemName} (#{entry.FurnitureId}) @ {entry.Position}");
+        Plugin.Log.Debug($"{entry.Action}{(entry.WhileAway ? " (away)" : "")}: {entry.ItemName} (#{entry.FurnitureId}) @ {entry.Position}");
     }
 
     private static unsafe Dictionary<int, FurnitureRecord>? BuildSnapshot(HousingFurnitureManager* furnitureManager)
@@ -292,6 +318,9 @@ public sealed class HousingMonitor : IDisposable
     private static string HistoryPath
         => Path.Combine(Plugin.PluginInterface.ConfigDirectory.FullName, "history.json");
 
+    private static string LayoutsPath
+        => Path.Combine(Plugin.PluginInterface.ConfigDirectory.FullName, "layouts.json");
+
     private void MaybeSave()
     {
         if (!dirty || (DateTime.UtcNow - lastSave).TotalSeconds < SaveDebounceSeconds)
@@ -303,20 +332,26 @@ public sealed class HousingMonitor : IDisposable
     {
         try
         {
-            if (!File.Exists(HistoryPath))
-                return;
+            if (File.Exists(HistoryPath))
+            {
+                var loaded = JsonSerializer.Deserialize<List<HistoryEntry>>(File.ReadAllText(HistoryPath), JsonOpts);
+                if (loaded != null)
+                {
+                    entries.Clear();
+                    var max = Math.Max(10, plugin.Configuration.MaxEntries);
+                    entries.AddRange(loaded.Count > max ? loaded.GetRange(0, max) : loaded);
+                }
+            }
 
-            var loaded = JsonSerializer.Deserialize<List<HistoryEntry>>(File.ReadAllText(HistoryPath), JsonOpts);
-            if (loaded == null)
-                return;
-
-            entries.Clear();
-            var max = Math.Max(10, plugin.Configuration.MaxEntries);
-            entries.AddRange(loaded.Count > max ? loaded.GetRange(0, max) : loaded);
+            if (File.Exists(LayoutsPath))
+            {
+                savedLayouts = JsonSerializer.Deserialize<Dictionary<ulong, Dictionary<int, FurnitureRecord>>>(
+                    File.ReadAllText(LayoutsPath), JsonOpts) ?? new();
+            }
         }
         catch (Exception ex)
         {
-            // Non-critical — a bad/old file just means we start with an empty log.
+            // Non-critical — a bad/old file just means we start with an empty log/layouts.
             Plugin.Log.Warning(ex, "Could not load saved history; starting fresh.");
         }
     }
@@ -327,6 +362,7 @@ public sealed class HousingMonitor : IDisposable
         {
             Plugin.PluginInterface.ConfigDirectory.Create();
             File.WriteAllText(HistoryPath, JsonSerializer.Serialize(entries, JsonOpts));
+            File.WriteAllText(LayoutsPath, JsonSerializer.Serialize(savedLayouts, JsonOpts));
             dirty = false;
             lastSave = DateTime.UtcNow;
         }

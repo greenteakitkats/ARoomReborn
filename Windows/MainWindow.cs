@@ -82,6 +82,13 @@ public class MainWindow : Window, IDisposable
 
             ImGui.TableNextColumn();
             ImGui.Text(e.ItemName);
+            if (e.WhileAway)
+            {
+                ImGui.SameLine();
+                ImGui.TextDisabled("(away)");
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Detected when you entered — changed since your last visit.");
+            }
 
             ImGui.TableNextColumn();
             var isMove = e.Action is HistoryAction.Moved or HistoryAction.Rotated;

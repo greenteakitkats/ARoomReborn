@@ -20,6 +20,10 @@ diagnostics snapshot (handy after a patch).
   changes are still there.
 - **Multi-house aware** — entries are tagged with the house they happened in,
   and the baseline reseeds when you move to a different house.
+- **"Since last visit"** — on entering a house you've seen before, it diffs the
+  current layout against the last-known one and logs what changed while you were
+  away (tagged `(away)`). Can't say *who* changed it — the game exposes no editor
+  info — but it catches placements, removals, moves, and dyes you missed.
 
 ## How it works
 
@@ -36,9 +40,11 @@ diagnostics snapshot (handy after a patch).
 - Dragging/turning fires many tiny updates; successive moves of the same object
   within 5s **coalesce** into one row (a Rotated that then moves upgrades to
   Moved), so you see the net change.
-- The first snapshot after entering a house is **seeded silently**. The read
-  loop is wrapped so a struct mismatch after a patch fails soft (logs once,
-  pauses) instead of crashing or spamming.
+- On your **first ever visit** to a house the layout is seeded silently; on
+  later visits it's diffed against the last-known layout (persisted to
+  `layouts.json`) to surface away-changes, then live tracking continues.
+- The read loop is wrapped so a struct mismatch after a patch fails soft (logs
+  once, pauses) instead of crashing or spamming.
 
 ## Status / things to verify on first run
 
@@ -57,8 +63,10 @@ names. Confirm after the first build:
    that assumption is wrong on your version.
 4. **Rotation units** — shown as degrees assuming radians; fix `Format()` in
    `MainWindow.cs` if angles look wrong.
-5. **History persistence** — uses `System.Text.Json` with `IncludeFields`. If the
-   saved file doesn't round-trip, switch to an explicit DTO.
+5. **Persistence** — `history.json` and `layouts.json` use `System.Text.Json`
+   with `IncludeFields` (for `Vector3`) and numeric dictionary keys
+   (`Dictionary<ulong, Dictionary<int, …>>`). If either doesn't round-trip on
+   your runtime, switch to explicit DTOs / string keys.
 
 `/houselog dump` prints all of this state to `/xllog` in one shot — use it first.
 
