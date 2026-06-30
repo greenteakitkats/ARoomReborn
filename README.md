@@ -28,6 +28,7 @@ diagnostics snapshot (handy after a patch).
 - **Place / Remove / Move / Rotate / Dye** tracking, with coordinates (and dye
   names + color swatches for recolors).
 - **Item icons** and a **"today" summary** line for at-a-glance scanning.
+- **Auto-open** the log when the housing menu appears (toggle in the window).
 - **Click any coordinate to copy** `X Y Z` to the clipboard — the greyed "from"
   line of a move is the value you paste back into BDTH to undo it.
 - **Search** box to filter by item name.

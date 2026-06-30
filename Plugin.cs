@@ -1,4 +1,6 @@
 using System;
+using Dalamud.Game.Addon.Lifecycle;
+using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
 using Dalamud.Game.Command;
 using Dalamud.Interface.Windowing;
 using Dalamud.IoC;
@@ -16,9 +18,13 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService] internal static IClientState ClientState { get; private set; } = null!;
     [PluginService] internal static IFramework Framework { get; private set; } = null!;
     [PluginService] internal static IDataManager DataManager { get; private set; } = null!;
+    [PluginService] internal static IAddonLifecycle AddonLifecycle { get; private set; } = null!;
     [PluginService] internal static IPluginLog Log { get; private set; } = null!;
 
     private const string CommandName = "/houselog";
+
+    // Addons that signal the player is about to decorate (furnishing catalogue / layout mode).
+    private static readonly string[] HousingAddons = { "HousingGoods", "HousingLayout" };
 
     public Configuration Configuration { get; init; }
     public HousingMonitor Monitor { get; init; }
@@ -43,6 +49,8 @@ public sealed class Plugin : IDalamudPlugin
         PluginInterface.UiBuilder.Draw += WindowSystem.Draw;
         PluginInterface.UiBuilder.OpenMainUi += ToggleMainUi;
 
+        AddonLifecycle.RegisterListener(AddonEvent.PostSetup, HousingAddons, OnHousingAddon);
+
         Log.Information("Housing History loaded.");
     }
 
@@ -50,6 +58,8 @@ public sealed class Plugin : IDalamudPlugin
     {
         PluginInterface.UiBuilder.Draw -= WindowSystem.Draw;
         PluginInterface.UiBuilder.OpenMainUi -= ToggleMainUi;
+
+        AddonLifecycle.UnregisterListener(OnHousingAddon);
 
         WindowSystem.RemoveAllWindows();
         MainWindow.Dispose();
@@ -69,4 +79,10 @@ public sealed class Plugin : IDalamudPlugin
         MainWindow.Toggle();
     }
     private void ToggleMainUi() => MainWindow.Toggle();
+
+    private void OnHousingAddon(AddonEvent type, AddonArgs args)
+    {
+        if (Configuration.AutoOpenWithHousing)
+            MainWindow.IsOpen = true;
+    }
 }

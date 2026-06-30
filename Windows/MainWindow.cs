@@ -49,6 +49,10 @@ public class MainWindow : Window, IDisposable
 
         ImGui.SetNextItemWidth(220);
         ImGui.InputTextWithHint("##search", "Search item…", ref search, 100);
+        ImGui.SameLine();
+        DrawFilter("Auto-open", cfg.AutoOpenWithHousing, v => { cfg.AutoOpenWithHousing = v; cfg.Save(); });
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Open this window automatically when the housing menu appears.");
 
         DrawTodaySummary();
         ImGui.Separator();

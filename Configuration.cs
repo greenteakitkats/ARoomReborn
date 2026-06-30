@@ -19,6 +19,9 @@ public class Configuration : IPluginConfiguration
     public bool ShowMoved { get; set; } = true;
     public bool ShowDyed { get; set; } = true;
 
+    /// <summary>Open the log automatically when the housing furnishing menu appears.</summary>
+    public bool AutoOpenWithHousing { get; set; } = true;
+
     // Saving is exposed here just to keep call sites tidy.
     public void Save() => Plugin.PluginInterface.SavePluginConfig(this);
 }

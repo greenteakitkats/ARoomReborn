@@ -34,6 +34,14 @@ public sealed class HousingMonitor : IDisposable
     private long lastStamp = long.MinValue;
     private DateTime lastPoll = DateTime.MinValue;
 
+    // Furniture streams in after a zone load; wait for the item count to hold steady across
+    // a couple of polls before trusting a snapshot as the baseline, otherwise the load-in
+    // reads as a flood of placements every time you enter.
+    private const int SettleReads = 2;
+    private int settleCount;
+    private int settleLastCount = -1;
+    private ulong settleHouseId;
+
     // When true, entries created by the current diff are tagged as detected-on-entry.
     private bool markAway;
 
@@ -68,6 +76,8 @@ public sealed class HousingMonitor : IDisposable
         // Changing zones invalidates the live baseline; it re-establishes on the next read.
         haveBaseline = false;
         baseline.Clear();
+        settleLastCount = -1;
+        settleCount = 0;
     }
 
     private void OnUpdate(IFramework framework)
@@ -128,9 +138,21 @@ public sealed class HousingMonitor : IDisposable
         // share a TerritoryType, so we key off HouseId, not territory).
         if (!haveBaseline || houseId != baselineHouseId)
         {
+            // Wait for the furniture list to finish streaming in (count stable across a few
+            // polls) before establishing the baseline — see SettleReads above.
+            if (settleHouseId != houseId || current.Count != settleLastCount)
+            {
+                settleHouseId = houseId;
+                settleLastCount = current.Count;
+                settleCount = 0;
+                return;
+            }
+            if (++settleCount < SettleReads)
+                return;
+
             if (savedLayouts.TryGetValue(houseId, out var lastKnown))
             {
-                // We've been here before — log what's different since last visit.
+                // We've been here before — log only what's different since last visit.
                 markAway = true;
                 try { DiffAndLog(lastKnown, current, houseId); }
                 finally { markAway = false; }
@@ -144,6 +166,8 @@ public sealed class HousingMonitor : IDisposable
             baseline = current;
             baselineHouseId = houseId;
             haveBaseline = true;
+            settleLastCount = -1;
+            settleCount = 0;
             RememberLayout(houseId, current);
             return;
         }
