@@ -16,6 +16,9 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
 
       - uses: actions/setup-dotnet@v4
         with:
@@ -63,7 +66,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout main
           git add repo.json
           git commit -m "Update repo.json for $(git describe --tags)" 2>$null
           if ($LASTEXITCODE -eq 0) { git push origin main }
