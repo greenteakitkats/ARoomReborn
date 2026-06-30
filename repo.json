@@ -3,7 +3,7 @@
     "Author": "Ryan",
     "Name": "Housing History",
     "InternalName": "HousingHistory",
-    "AssemblyVersion": "0.7.0.0",
+    "AssemblyVersion": "0.8.0.0",
     "Description": "A read-only log of furnishings placed, removed, moved, rotated, and dyed in your house — with coordinates, dye names, item icons, and a 'since last visit' diff. Click any coordinate to copy it (handy for undoing a move). Complementary to Burning Down the House. Open with /houselog.",
     "ApplicableVersion": "any",
     "DalamudApiLevel": 15,
