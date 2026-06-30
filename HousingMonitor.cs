@@ -63,7 +63,7 @@ public sealed class HousingMonitor : IDisposable
         dirty = true;
     }
 
-    private void OnTerritoryChanged(ushort territory)
+    private void OnTerritoryChanged(uint territory)
     {
         // Changing zones invalidates the live baseline; it re-establishes on the next read.
         haveBaseline = false;
