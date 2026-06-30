@@ -227,12 +227,16 @@ public sealed class HousingMonitor : IDisposable
         }
     }
 
+    // Prefer the resolved sheet row for naming; fall back to the raw id so the log shows
+    // a meaningful "#<rawId>" rather than "#0" if row resolution isn't working yet.
+    private static uint DisplayId(FurnitureRecord r) => r.RowId != 0 ? r.RowId : r.Id;
+
     private void LogSimple(HistoryAction action, int index, FurnitureRecord r, ulong houseId)
-        => AddEntry(new HistoryEntry(DateTime.Now, action, index, r.RowId, NameResolver.Resolve(r.RowId),
+        => AddEntry(new HistoryEntry(DateTime.Now, action, index, DisplayId(r), NameResolver.Resolve(DisplayId(r)),
             r.Position, r.Rotation, null, 0f, r.Stain, r.Stain, houseId, Plugin.ClientState.TerritoryType, markAway));
 
     private void LogRedyed(int index, FurnitureRecord before, FurnitureRecord now, ulong houseId)
-        => AddEntry(new HistoryEntry(DateTime.Now, HistoryAction.Redyed, index, now.RowId, NameResolver.Resolve(now.RowId),
+        => AddEntry(new HistoryEntry(DateTime.Now, HistoryAction.Redyed, index, DisplayId(now), NameResolver.Resolve(DisplayId(now)),
             now.Position, now.Rotation, null, 0f, now.Stain, before.Stain, houseId, Plugin.ClientState.TerritoryType, markAway));
 
     private void LogMovement(HistoryAction action, int index, FurnitureRecord before, FurnitureRecord now, ulong houseId)
@@ -256,7 +260,7 @@ public sealed class HousingMonitor : IDisposable
             }
         }
 
-        AddEntry(new HistoryEntry(DateTime.Now, action, index, now.RowId, NameResolver.Resolve(now.RowId),
+        AddEntry(new HistoryEntry(DateTime.Now, action, index, DisplayId(now), NameResolver.Resolve(DisplayId(now)),
             now.Position, now.Rotation, before.Position, before.Rotation, now.Stain, before.Stain,
             houseId, Plugin.ClientState.TerritoryType, markAway));
     }
@@ -341,12 +345,21 @@ public sealed class HousingMonitor : IDisposable
                     continue;
 
                 count++;
-                if (shown < 8)
+                if (shown < 6)
                 {
-                    var rowId = ReadRowId(furnitureManager, f.Index);
+                    var objects = &furnitureManager->ObjectManager.ObjectArray;
+                    var inRange = f.Index >= 0 && f.Index < objects->ObjectCount;
+                    var gobj = inRange ? objects->Objects[f.Index].Value : null;
+                    uint layoutId = gobj != null ? gobj->LayoutId : 0;
+                    uint gimmickId = gobj != null ? gobj->GimmickId : 0;
+                    uint baseId = gobj != null ? gobj->BaseId : 0;
+
                     Plugin.Log.Information(
-                        $"[dump]  idx={f.Index} rawId={f.Id} rowId={rowId} name=\"{NameResolver.Resolve(rowId)}\" " +
-                        $"pos=({f.Position.X:0.00}, {f.Position.Y:0.00}, {f.Position.Z:0.00})");
+                        $"[dump] rawId={f.Id} idx={f.Index} objCount={objects->ObjectCount} obj={(gobj == null ? "null" : "ok")} " +
+                        $"layoutId={layoutId} gimmickId={gimmickId} baseId={baseId}");
+                    Plugin.Log.Information(
+                        $"[dump]   names: gimmick->\"{NameResolver.Resolve(gimmickId)}\" layout->\"{NameResolver.Resolve(layoutId)}\" " +
+                        $"base->\"{NameResolver.Resolve(baseId)}\" rawLow->\"{NameResolver.Resolve(f.Id & 0xFFFF)}\"");
                     shown++;
                 }
             }
