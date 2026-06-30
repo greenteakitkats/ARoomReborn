@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Numerics;
 using Lumina.Excel.Sheets;
 
 namespace HousingHistory;
@@ -16,7 +17,46 @@ namespace HousingHistory;
 public static class NameResolver
 {
     private static readonly Dictionary<uint, string> Cache = new();
+    private static readonly Dictionary<uint, uint> IconCache = new();
     private static readonly Dictionary<byte, string> StainCache = new();
+    private static readonly Dictionary<byte, Vector4> StainColorCache = new();
+
+    /// <summary>Game icon id for a furnishing (0 if unknown).</summary>
+    public static uint ResolveIcon(uint furnitureId)
+    {
+        if (IconCache.TryGetValue(furnitureId, out var cached))
+            return cached;
+
+        uint icon = 0;
+        var sheet = Plugin.DataManager.GetExcelSheet<HousingFurniture>();
+        if (sheet.TryGetRow(furnitureId, out var row) && row.Item.IsValid)
+            icon = row.Item.Value.Icon;
+
+        IconCache[furnitureId] = icon;
+        return icon;
+    }
+
+    /// <summary>Approximate display color for a dye (transparent for "no dye").</summary>
+    public static Vector4 ResolveStainColor(byte stainId)
+    {
+        if (stainId == 0)
+            return new Vector4(0, 0, 0, 0);
+        if (StainColorCache.TryGetValue(stainId, out var cached))
+            return cached;
+
+        var color = new Vector4(0.5f, 0.5f, 0.5f, 1f);
+        var sheet = Plugin.DataManager.GetExcelSheet<Stain>();
+        if (sheet.TryGetRow(stainId, out var row))
+        {
+            // Stain.Color is packed RGB in the low 24 bits. If swatches look channel-swapped
+            // on your version, swap the R/B shifts here.
+            var c = row.Color;
+            color = new Vector4(((c >> 16) & 0xFF) / 255f, ((c >> 8) & 0xFF) / 255f, (c & 0xFF) / 255f, 1f);
+        }
+
+        StainColorCache[stainId] = color;
+        return color;
+    }
 
     public static string ResolveStain(byte stainId)
     {

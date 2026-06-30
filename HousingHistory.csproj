@@ -1,6 +1,6 @@
 <Project Sdk="Dalamud.NET.Sdk/15.0.0">
   <PropertyGroup>
-    <Version>0.5.0.0</Version>
+    <Version>0.6.0.0</Version>
     <Description>A timestamped log of furniture placed and removed in your house.</Description>
     <PackageLicenseExpression>AGPL-3.0-or-later</PackageLicenseExpression>
     <IsPackable>false</IsPackable>
@@ -9,4 +9,9 @@
          (The Dalamud SDK usually enables this already; set explicitly to be safe.) -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
+
+  <!-- The standalone logic tests are their own project; keep them out of the plugin build. -->
+  <ItemGroup>
+    <Compile Remove="tests/**/*.cs" />
+  </ItemGroup>
 </Project>

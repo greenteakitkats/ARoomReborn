@@ -1,0 +1,70 @@
+name: Release
+
+# Tag a version (e.g. `git tag v0.6.0 && git push --tags`) to build the plugin,
+# publish a GitHub Release with the packaged latest.zip, and regenerate repo.json
+# (the Dalamud custom-repo manifest) with the correct version + API level.
+on:
+  push:
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.x
+
+      - name: Download Dalamud
+        shell: pwsh
+        run: |
+          $dest = "$env:AppData\XIVLauncher\addon\Hooks\dev"
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          Invoke-WebRequest -Uri https://goatcorp.github.io/dalamud-distrib/latest.zip -OutFile dalamud.zip
+          Expand-Archive -Path dalamud.zip -DestinationPath $dest -Force
+
+      - name: Build
+        run: dotnet build -c Release --nologo
+
+      - name: Regenerate repo.json from the built manifest
+        shell: pwsh
+        run: |
+          $manifest = Get-Content "bin/Release/HousingHistory/HousingHistory.json" | ConvertFrom-Json
+          $base = "https://github.com/${{ github.repository }}/releases/latest/download/latest.zip"
+          $entry = [ordered]@{
+            Author              = $manifest.Author
+            Name                = $manifest.Name
+            InternalName        = "HousingHistory"
+            AssemblyVersion     = $manifest.AssemblyVersion
+            Description         = $manifest.Description
+            ApplicableVersion   = "any"
+            DalamudApiLevel     = $manifest.DalamudApiLevel
+            RepoUrl             = "https://github.com/${{ github.repository }}"
+            Tags                = $manifest.Tags
+            DownloadLinkInstall = $base
+            DownloadLinkUpdate  = $base
+            DownloadLinkTesting = $base
+          }
+          ConvertTo-Json @($entry) -Depth 5 | Set-Content "repo.json"
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: bin/Release/HousingHistory/latest.zip
+
+      - name: Commit updated repo.json
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout main
+          git add repo.json
+          git commit -m "Update repo.json for $(git describe --tags)" 2>$null
+          if ($LASTEXITCODE -eq 0) { git push origin main }
+          else { Write-Host "repo.json unchanged" }

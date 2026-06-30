@@ -15,8 +15,6 @@ namespace HousingHistory;
 /// </summary>
 public sealed class HousingMonitor : IDisposable
 {
-    private const float PositionEpsilon = 0.01f; // yalms; ignore sub-threshold jitter
-    private const float RotationEpsilon = 0.01f; // radians
     private const double MoveCoalesceSeconds = 5.0;
     private const double SaveDebounceSeconds = 15.0;
 
@@ -163,37 +161,24 @@ public sealed class HousingMonitor : IDisposable
 
     private void DiffAndLog(Dictionary<int, FurnitureRecord> oldSet, Dictionary<int, FurnitureRecord> newSet, ulong houseId)
     {
-        foreach (var (index, now) in newSet)
+        foreach (var change in LayoutDiffer.Diff(oldSet, newSet))
         {
-            if (!oldSet.TryGetValue(index, out var before))
+            switch (change.Action)
             {
-                LogSimple(HistoryAction.Placed, index, now, houseId);
+                case HistoryAction.Placed:
+                    LogSimple(HistoryAction.Placed, change.Index, change.After, houseId);
+                    break;
+                case HistoryAction.Removed:
+                    LogSimple(HistoryAction.Removed, change.Index, change.Before, houseId);
+                    break;
+                case HistoryAction.Moved:
+                case HistoryAction.Rotated:
+                    LogMovement(change.Action, change.Index, change.Before, change.After, houseId);
+                    break;
+                case HistoryAction.Redyed:
+                    LogRedyed(change.Index, change.Before, change.After, houseId);
+                    break;
             }
-            else if (before.Id != now.Id)
-            {
-                // The game reused this object slot for a different furnishing.
-                LogSimple(HistoryAction.Removed, index, before, houseId);
-                LogSimple(HistoryAction.Placed, index, now, houseId);
-            }
-            else
-            {
-                var movedDistance = Vector3.DistanceSquared(before.Position, now.Position) > PositionEpsilon * PositionEpsilon;
-                var rotated = MathF.Abs(before.Rotation - now.Rotation) > RotationEpsilon;
-                var redyed = before.Stain != now.Stain;
-
-                if (movedDistance)
-                    LogMovement(HistoryAction.Moved, index, before, now, houseId);
-                else if (rotated)
-                    LogMovement(HistoryAction.Rotated, index, before, now, houseId);
-                else if (redyed)
-                    LogRedyed(index, before, now, houseId);
-            }
-        }
-
-        foreach (var (index, before) in oldSet)
-        {
-            if (!newSet.ContainsKey(index))
-                LogSimple(HistoryAction.Removed, index, before, houseId);
         }
     }
 

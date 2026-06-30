@@ -20,6 +20,9 @@ jobs:
         with:
           dotnet-version: 9.x
 
+      - name: Run logic tests
+        run: dotnet run --project tests/LogicTests/LogicTests.csproj -c Release --nologo
+
       - name: Download Dalamud
         shell: pwsh
         run: |

@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
+using Dalamud.Interface.Textures;
 using Dalamud.Interface.Utility.Raii;
 using Dalamud.Interface.Windowing;
 
@@ -49,6 +50,7 @@ public class MainWindow : Window, IDisposable
         ImGui.SetNextItemWidth(220);
         ImGui.InputTextWithHint("##search", "Search item…", ref search, 100);
 
+        DrawTodaySummary();
         ImGui.Separator();
 
         using var table = ImRaii.Table("##history", 4,
@@ -81,6 +83,13 @@ public class MainWindow : Window, IDisposable
             DrawAction(e.Action);
 
             ImGui.TableNextColumn();
+            var iconId = NameResolver.ResolveIcon(e.FurnitureId);
+            if (iconId != 0)
+            {
+                var tex = Plugin.TextureProvider.GetFromGameIcon(new GameIconLookup(iconId)).GetWrapOrEmpty();
+                ImGui.Image(tex.Handle, new Vector2(20, 20));
+                ImGui.SameLine();
+            }
             ImGui.Text(e.ItemName);
             if (e.WhileAway)
             {
@@ -94,8 +103,15 @@ public class MainWindow : Window, IDisposable
             var isMove = e.Action is HistoryAction.Moved or HistoryAction.Rotated;
             if (e.Action == HistoryAction.Redyed)
             {
+                DrawDyeSwatch(e.FromStain, row * 2);
+                ImGui.SameLine();
                 ImGui.TextDisabled(NameResolver.ResolveStain(e.FromStain));
-                ImGui.Text("→ " + NameResolver.ResolveStain(e.Stain));
+                ImGui.SameLine();
+                ImGui.Text("→");
+                ImGui.SameLine();
+                DrawDyeSwatch(e.Stain, row * 2 + 1);
+                ImGui.SameLine();
+                ImGui.Text(NameResolver.ResolveStain(e.Stain));
             }
             else if (isMove && e.FromPosition is { } from)
             {
@@ -156,6 +172,40 @@ public class MainWindow : Window, IDisposable
 
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Click to copy X Y Z to clipboard");
+    }
+
+    private void DrawTodaySummary()
+    {
+        int placed = 0, removed = 0, moved = 0, dyed = 0;
+        var today = DateTime.Now.Date;
+        foreach (var e in plugin.Monitor.Entries)
+        {
+            if (e.Time.Date != today)
+                continue;
+            switch (e.Action)
+            {
+                case HistoryAction.Placed: placed++; break;
+                case HistoryAction.Removed: removed++; break;
+                case HistoryAction.Moved:
+                case HistoryAction.Rotated: moved++; break;
+                case HistoryAction.Redyed: dyed++; break;
+            }
+        }
+
+        ImGui.TextDisabled($"Today: {placed} placed · {removed} removed · {moved} moved · {dyed} dyed");
+    }
+
+    private static void DrawDyeSwatch(byte stainId, int id)
+    {
+        if (stainId == 0)
+        {
+            ImGui.Dummy(new Vector2(14, 14));
+            return;
+        }
+
+        ImGui.ColorButton($"##dye{id}", NameResolver.ResolveStainColor(stainId),
+            ImGuiColorEditFlags.NoAlpha | ImGuiColorEditFlags.NoPicker | ImGuiColorEditFlags.NoTooltip,
+            new Vector2(14, 14));
     }
 
     private static string Format(Vector3 p, float rotationRadians)

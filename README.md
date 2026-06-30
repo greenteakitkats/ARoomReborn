@@ -9,10 +9,25 @@ it does not move or write anything, it only watches.
 Open the log in-game with `/houselog`. Run `/houselog dump` to log a
 diagnostics snapshot (handy after a patch).
 
+## Install in Dalamud (custom repository)
+
+1. In-game, open `/xlsettings` → **Experimental** → **Custom Plugin Repositories**.
+2. Add this URL and enable it:
+   ```
+   https://raw.githubusercontent.com/greenteakitkats/HousingHistory/main/repo.json
+   ```
+3. Open `/xlplugins`, search **Housing History**, and install.
+
+> The repo only serves an installable build after a tagged release has been built
+> by CI (see *Releasing* below). `repo.json`'s version and API level are
+> regenerated automatically by the release workflow, so they always match the
+> built plugin.
+
 ## Features
 
 - **Place / Remove / Move / Rotate / Dye** tracking, with coordinates (and dye
-  names for recolors).
+  names + color swatches for recolors).
+- **Item icons** and a **"today" summary** line for at-a-glance scanning.
 - **Click any coordinate to copy** `X Y Z` to the clipboard — the greyed "from"
   line of a move is the value you paste back into BDTH to undo it.
 - **Search** box to filter by item name.
@@ -86,6 +101,20 @@ names. Confirm after the first build:
 No .NET SDK installed, and FFXIV+Dalamud only runs on Mac via **XIV-on-Mac**
 (Wine). Edit here, build/test on a Windows PC or VM (recommended); or go all-Mac
 with `brew install dotnet-sdk` + `DALAMUD_HOME` pointing into the Wine prefix.
+
+## Releasing
+
+Tag a version to ship a build:
+
+```
+git tag v0.6.0
+git push --tags
+```
+
+`release.yml` builds on Windows, publishes a GitHub Release with `latest.zip`,
+and regenerates `repo.json` (correct version + `DalamudApiLevel`) so the custom
+repository URL above serves the new build. `DownloadLink*` always point at
+`releases/latest/download/latest.zip`.
 
 ## Maintenance — surviving Dalamud/game updates
 

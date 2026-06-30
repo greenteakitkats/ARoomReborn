@@ -1,0 +1,16 @@
+[
+  {
+    "Author": "Ryan",
+    "Name": "Housing History",
+    "InternalName": "HousingHistory",
+    "AssemblyVersion": "0.6.0.0",
+    "Description": "A read-only log of furnishings placed, removed, moved, rotated, and dyed in your house, with coordinates and a 'since last visit' diff. Complementary to Burning Down the House. Open with /houselog.",
+    "ApplicableVersion": "any",
+    "DalamudApiLevel": 12,
+    "RepoUrl": "https://github.com/greenteakitkats/HousingHistory",
+    "Tags": [ "housing", "history", "qol", "furniture" ],
+    "DownloadLinkInstall": "https://github.com/greenteakitkats/HousingHistory/releases/latest/download/latest.zip",
+    "DownloadLinkUpdate": "https://github.com/greenteakitkats/HousingHistory/releases/latest/download/latest.zip",
+    "DownloadLinkTesting": "https://github.com/greenteakitkats/HousingHistory/releases/latest/download/latest.zip"
+  }
+]
