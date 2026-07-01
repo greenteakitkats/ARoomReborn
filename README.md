@@ -26,9 +26,13 @@ changed.
 1. In-game, open `/xlsettings` → **Experimental** → **Custom Plugin Repositories**.
 2. Add this URL and enable it:
    ```
-   https://raw.githubusercontent.com/greenteakitkats/HousingHistory/main/repo.json
+   https://raw.githubusercontent.com/greenteakitkats/DalamudPlugins/main/repo.json
    ```
 3. Open `/xlplugins`, search **Housing History**, and click **Install**.
+
+> The custom-repo manifest lives in
+> [greenteakitkats/DalamudPlugins](https://github.com/greenteakitkats/DalamudPlugins)
+> (shared across all these plugins), which regenerates itself from each latest release.
 
 ## Usage
 

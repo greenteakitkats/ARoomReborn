@@ -57,16 +57,22 @@ dotnet run --project tests/LogicTests/LogicTests.csproj
 - `.github/workflows/build.yml` — builds against the latest Dalamud and runs the
   logic tests on every push, on PRs, and weekly (cron). The weekly run is the early
   warning: GitHub emails on failure when a Dalamud/ClientStructs update breaks it.
-- `.github/workflows/release.yml` — on a `v*` tag, builds, publishes a GitHub Release
-  with `latest.zip`, and regenerates `repo.json` (correct version + `DalamudApiLevel`
-  read from the built manifest) so the custom repo serves the new build.
+- `.github/workflows/release.yml` — on a `v*` tag, builds and publishes a GitHub
+  Release with `latest.zip`.
+
+The custom-repo manifest is **not** in this repo — it lives in
+[greenteakitkats/DalamudPlugins](https://github.com/greenteakitkats/DalamudPlugins),
+whose `update.yml` reads this plugin's latest release (version + `DalamudApiLevel`
+from the manifest inside `latest.zip`) and regenerates its `repo.json`.
 
 To ship a release:
 ```
 # bump <Version> in HousingHistory.csproj, commit, then:
-git tag v0.7.1
+git tag v0.9.3
 git push --tags
 ```
+That workflow runs on a schedule; to refresh the custom repo immediately after a
+release, trigger it: `gh workflow run "Update repo.json" -R greenteakitkats/DalamudPlugins`.
 `DownloadLink*` always point at `releases/latest/download/latest.zip`.
 
 ## Surviving Dalamud/game updates
