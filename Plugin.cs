@@ -6,6 +6,7 @@ using Dalamud.Interface.Windowing;
 using Dalamud.IoC;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
+using FFXIVClientStructs.FFXIV.Client.Game;
 using HousingHistory.Windows;
 
 namespace HousingHistory;
@@ -23,8 +24,13 @@ public sealed class Plugin : IDalamudPlugin
 
     private const string CommandName = "/houselog";
 
-    // Addons that signal the player is about to decorate (furnishing catalogue / layout mode).
-    private static readonly string[] HousingAddons = { "HousingGoods", "HousingLayout" };
+    // Windows that mean the player is decorating. Opening any of these opens the log:
+    // the furnishing catalogue, the layout toolbar, and the two dye windows.
+    private static readonly string[] OpenAddons = { "HousingGoods", "HousingLayout", "HousingGoodsStain", "ColorantColoring" };
+
+    // Closing the main housing menus closes the log. The dye windows are left out, since
+    // you're usually still in layout mode after picking a color.
+    private static readonly string[] CloseAddons = { "HousingGoods", "HousingLayout" };
 
     public Configuration Configuration { get; init; }
     public HousingMonitor Monitor { get; init; }
@@ -51,8 +57,8 @@ public sealed class Plugin : IDalamudPlugin
         PluginInterface.UiBuilder.Draw += WindowSystem.Draw;
         PluginInterface.UiBuilder.OpenMainUi += ToggleMainUi;
 
-        AddonLifecycle.RegisterListener(AddonEvent.PostSetup, HousingAddons, OnHousingAddon);
-        AddonLifecycle.RegisterListener(AddonEvent.PreFinalize, HousingAddons, OnHousingAddonClose);
+        AddonLifecycle.RegisterListener(AddonEvent.PostSetup, OpenAddons, OnHousingAddon);
+        AddonLifecycle.RegisterListener(AddonEvent.PreFinalize, CloseAddons, OnHousingAddonClose);
 
         Log.Information("Housing History loaded.");
     }
@@ -112,8 +118,15 @@ public sealed class Plugin : IDalamudPlugin
 
     private void OnHousingAddon(AddonEvent type, AddonArgs args)
     {
-        if (Configuration.AutoOpenWithHousing)
+        // Guard on being in a house so dyeing gear in town doesn't pop the window open.
+        if (Configuration.AutoOpenWithHousing && InHouse())
             MainWindow.IsOpen = true;
+    }
+
+    private static unsafe bool InHouse()
+    {
+        var manager = HousingManager.Instance();
+        return manager != null && (manager->IsInside() || manager->IsOutside());
     }
 
     private void OnHousingAddonClose(AddonEvent type, AddonArgs args)
