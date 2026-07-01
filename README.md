@@ -49,6 +49,12 @@ changed.
 
 See [DEVELOPING.md](DEVELOPING.md).
 
+## Credits
+
+- Created and maintained by [@greenteakitkats](https://github.com/greenteakitkats).
+- Furniture data resolution references [ReMakePlace](https://github.com/RemakePlace/plugin).
+- Built to complement [Burning Down the House](https://github.com/LeonBlade/BDTHPlugin).
+
 ## License
 
 AGPL-3.0-or-later
