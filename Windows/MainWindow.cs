@@ -147,6 +147,7 @@ public class MainWindow : Window, IDisposable
                 // Old (greyed) then new. Click either to copy "X Y Z", the old line is the undo value.
                 CopyableCoord(Format(from, e.FromRotation), from, true, row * 2);
                 CopyableCoord("→ " + Format(e.Position, e.Rotation), e.Position, false, row * 2 + 1);
+                DrawUndoButton(from, e.FromRotation, row);
             }
             else
             {
@@ -214,6 +215,17 @@ public class MainWindow : Window, IDisposable
             else
                 ImGui.SetTooltip("Click to copy X Y Z to clipboard.");
         }
+    }
+
+    private static void DrawUndoButton(Vector3 from, float fromRotation, int row)
+    {
+        if (ImGui.SmallButton($"Undo##undo{row}"))
+            HousingWriter.TryUndo(from, fromRotation);
+
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(HousingWriter.CanApply()
+                ? "Snap the selected item back to where it was, position and facing."
+                : "Select this item in housing layout mode first, then click to undo.");
     }
 
     private void DrawTodaySummary()

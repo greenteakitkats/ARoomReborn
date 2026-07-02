@@ -15,7 +15,9 @@ placement, and this one remembers how everything used to be.
 - Shows coordinates for everything. Click one to copy it, then paste it back into
   BDTH to undo a move.
 - Apply mode (optional): click a coordinate and the item you have selected in
-  layout mode jumps right to it, so undoing a move is a single click.
+  layout mode jumps right to it.
+- Undo button on every move, snaps the selected item straight back to where it
+  was, position and facing both, no copying or pasting needed.
 - Item icons and dye color swatches so the log is easy to skim.
 - Search, filters for each kind of change, and a quick "today" summary.
 - When you come back to a house, it shows you what changed while you were away.
@@ -48,6 +50,8 @@ placement, and this one remembers how everything used to be.
   specific item.
 - Turn on Apply mode if you'd rather click a coordinate and have the selected item
   jump straight there.
+- On any move, select the item in layout mode and hit its Undo button to send it
+  straight back, no need to copy coordinates at all.
 - Type `/houselog dump` to print a quick diagnostics snapshot to `/xllog` (handy
   right after a game patch).
 
@@ -58,8 +62,9 @@ placement, and this one remembers how everything used to be.
 - It can tell you what changed, but not who did it. The game doesn't share that
   with plugins.
 - Out of the box it only watches and never changes anything, which keeps it in line
-  with Dalamud's plugin rules. Apply mode is the one exception, and even then it only
-  nudges the item you already have selected, exactly the way Burning Down the House does.
+  with Dalamud's plugin rules. Apply mode and the Undo button are the one exception,
+  and even then they only nudge the item you already have selected, exactly the way
+  Burning Down the House does.
 
 ## Building and contributing
 

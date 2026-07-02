@@ -38,4 +38,21 @@ internal static unsafe class HousingWriter
         housing->ActiveItem->Transform.Translation = position;
         return true;
     }
+
+    /// <summary>
+    /// Move and turn the selected item back to a previous position/rotation in one step, for
+    /// the undo button. Housing items only ever yaw around the vertical axis, so the single
+    /// rotation float maps straight onto a Y-axis quaternion (matches Burning Down the House's
+    /// conversion for a pure-yaw angle).
+    /// </summary>
+    public static bool TryUndo(Vector3 position, float rotationRadians)
+    {
+        var housing = Housing();
+        if (housing == null || housing->Mode != HousingLayoutMode.Rotate || housing->ActiveItem == null)
+            return false;
+
+        housing->ActiveItem->Transform.Translation = position;
+        housing->ActiveItem->Transform.Rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitY, rotationRadians);
+        return true;
+    }
 }
