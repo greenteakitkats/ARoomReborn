@@ -60,7 +60,7 @@ public sealed class Plugin : IDalamudPlugin
         AddonLifecycle.RegisterListener(AddonEvent.PostSetup, OpenAddons, OnHousingAddon);
         AddonLifecycle.RegisterListener(AddonEvent.PreFinalize, CloseAddons, OnHousingAddonClose);
 
-        Log.Information("Homekeeper loaded.");
+        Log.Information("A Room Reborn loaded.");
     }
 
     public void Dispose()

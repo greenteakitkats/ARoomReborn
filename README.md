@@ -1,9 +1,9 @@
-# Homekeeper
+# A Room Reborn
 
-*(Previously called Housing History, the project and repo kept that name so
-existing installs don't break, but the plugin now goes by Homekeeper.)*
+*(The project and repo are still named HousingHistory, but the plugin goes by
+A Room Reborn in-game and in the docs.)*
 
-Homekeeper quietly keeps track of everything you do while decorating your
+A Room Reborn quietly keeps track of everything you do while decorating your
 FFXIV house, indoors and out in the yard. Whenever you place, remove, move,
 rotate, or dye a furnishing, it writes it down with a timestamp and the exact
 coordinates, so you can look back at what you just did and put things right if
@@ -37,7 +37,7 @@ everything used to be.
    ```
    https://raw.githubusercontent.com/greenteakitkats/DalamudPlugins/main/repo.json
    ```
-3. Open `/xlplugins`, search for **Homekeeper**, and click **Install**.
+3. Open `/xlplugins`, search for **A Room Reborn**, and click **Install**.
 
 > The repository manifest lives in
 > [greenteakitkats/DalamudPlugins](https://github.com/greenteakitkats/DalamudPlugins),

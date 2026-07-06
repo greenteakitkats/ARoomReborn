@@ -1,8 +1,8 @@
 {
   "Author": "greenteakitkats",
-  "Name": "Homekeeper",
-  "InternalName": "HousingHistory",
-  "Punchline": "Quietly keeps track of everything you do while decorating, inside and out.",
+  "Name": "A Room Reborn",
+  "InternalName": "ARoomReborn",
+  "Punchline": "A running log of your housing changes, indoors and out.",
   "Description": "A running log of everything you do while decorating your house, indoors and out in the yard: placing, removing, moving, rotating, and dyeing furniture, all with coordinates. Forgot what you just changed, or moved something and want it back? Click the old coordinates to copy them, hit Undo on any move, or turn on Apply mode to snap the selected item right back into place. It'll also show you what changed since you were last home. Built to sit alongside Burning Down the House. Type /houselog to open it.",
   "ApplicableVersion": "any",
   "Tags": [
