@@ -1,7 +1,5 @@
 # Developing A Room Reborn
 
-*(The repo is still named HousingHistory, only the in-game display name changed.)*
-
 Maintainer/developer notes. Users don't need any of this, see the
 [README](README.md).
 
@@ -39,7 +37,7 @@ when housing structs shift.
 1. Install the .NET 9 SDK and XIVLauncher (run the game once with Dalamud so the dev
    libraries exist at `%AppData%\XIVLauncher\addon\Hooks\dev`).
 2. `dotnet build` in this folder.
-3. In-game: `/xlsettings` → Experimental → add the built `HousingHistory.dll` under
+3. In-game: `/xlsettings` → Experimental → add the built `ARoomReborn.dll` under
    "Dev Plugin Locations", then load it from `/xlplugins` (Dev Tools).
 
 ### macOS / Linux
@@ -69,7 +67,7 @@ from the manifest inside `latest.zip`) and regenerates its `repo.json`.
 
 To ship a release:
 ```
-# bump <Version> in HousingHistory.csproj, commit, then:
+# bump <Version> in ARoomReborn.csproj, commit, then:
 git tag v0.9.3
 git push --tags
 ```

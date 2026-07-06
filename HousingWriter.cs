@@ -1,7 +1,7 @@
 using System.Numerics;
 using FFXIVClientStructs.FFXIV.Client.LayoutEngine;
 
-namespace HousingHistory;
+namespace ARoomReborn;
 
 /// <summary>
 /// Optional write path (off by default): moves the item currently selected in the game's

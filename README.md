@@ -1,8 +1,5 @@
 # A Room Reborn
 
-*(The project and repo are still named HousingHistory, but the plugin goes by
-A Room Reborn in-game and in the docs.)*
-
 A Room Reborn quietly keeps track of everything you do while decorating your
 FFXIV house, indoors and out in the yard. Whenever you place, remove, move,
 rotate, or dye a furnishing, it writes it down with a timestamp and the exact

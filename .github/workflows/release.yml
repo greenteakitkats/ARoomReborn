@@ -35,5 +35,5 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          files: bin/Release/HousingHistory/latest.zip
+          files: bin/Release/ARoomReborn/latest.zip
           generate_release_notes: true

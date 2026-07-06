@@ -7,9 +7,9 @@ using Dalamud.IoC;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
 using FFXIVClientStructs.FFXIV.Client.Game;
-using HousingHistory.Windows;
+using ARoomReborn.Windows;
 
-namespace HousingHistory;
+namespace ARoomReborn;
 
 public sealed class Plugin : IDalamudPlugin
 {
@@ -35,7 +35,7 @@ public sealed class Plugin : IDalamudPlugin
     public Configuration Configuration { get; init; }
     public HousingMonitor Monitor { get; init; }
 
-    public readonly WindowSystem WindowSystem = new("HousingHistory");
+    public readonly WindowSystem WindowSystem = new("ARoomReborn");
     private MainWindow MainWindow { get; init; }
 
     private bool addonLogging;

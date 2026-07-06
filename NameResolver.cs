@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using System.Numerics;
 using Lumina.Excel.Sheets;
 
-namespace HousingHistory;
+namespace ARoomReborn;
 
 /// <summary>
 /// Maps a placed-furniture id to a human-readable item name, with caching.

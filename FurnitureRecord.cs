@@ -1,6 +1,6 @@
 using System.Numerics;
 
-namespace HousingHistory;
+namespace ARoomReborn;
 
 /// <summary>
 /// A single placed object's state at snapshot time. <see cref="Id"/> is the raw encoded

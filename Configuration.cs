@@ -1,7 +1,7 @@
 using Dalamud.Configuration;
 using System;
 
-namespace HousingHistory;
+namespace ARoomReborn;
 
 [Serializable]
 public class Configuration : IPluginConfiguration

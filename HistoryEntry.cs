@@ -1,7 +1,7 @@
 using System;
 using System.Numerics;
 
-namespace HousingHistory;
+namespace ARoomReborn;
 
 public enum HistoryAction
 {

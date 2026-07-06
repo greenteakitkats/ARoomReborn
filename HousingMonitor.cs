@@ -6,7 +6,7 @@ using System.Text.Json;
 using Dalamud.Plugin.Services;
 using FFXIVClientStructs.FFXIV.Client.Game;
 
-namespace HousingHistory;
+namespace ARoomReborn;
 
 /// <summary>
 /// Polls the furniture set, indoors or in the yard depending on where you're standing, and

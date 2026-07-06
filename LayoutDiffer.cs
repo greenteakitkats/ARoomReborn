@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 
-namespace HousingHistory;
+namespace ARoomReborn;
 
 /// <summary>A single detected difference between two furniture snapshots.</summary>
 internal readonly record struct LayoutChange(HistoryAction Action, int Index, FurnitureRecord Before, FurnitureRecord After);

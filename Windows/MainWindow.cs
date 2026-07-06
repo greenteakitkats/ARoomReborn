@@ -6,7 +6,7 @@ using Dalamud.Interface.Textures;
 using Dalamud.Interface.Utility.Raii;
 using Dalamud.Interface.Windowing;
 
-namespace HousingHistory.Windows;
+namespace ARoomReborn.Windows;
 
 public class MainWindow : Window, IDisposable
 {
@@ -20,7 +20,7 @@ public class MainWindow : Window, IDisposable
     private string search = string.Empty;
 
     public MainWindow(Plugin plugin)
-        : base("A Room Reborn##HousingHistoryMain")
+        : base("A Room Reborn##ARoomRebornMain")
     {
         SizeConstraints = new WindowSizeConstraints
         {

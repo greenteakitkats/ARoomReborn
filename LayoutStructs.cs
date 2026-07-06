@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices;
 using FFXIVClientStructs.FFXIV.Client.LayoutEngine.Group;
 
-namespace HousingHistory;
+namespace ARoomReborn;
 
 // The game's housing layout-editor mode. Items are editable in Rotate mode.
 internal enum HousingLayoutMode
