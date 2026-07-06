@@ -20,7 +20,7 @@ public class MainWindow : Window, IDisposable
     private string search = string.Empty;
 
     public MainWindow(Plugin plugin)
-        : base("Housing History##HousingHistoryMain")
+        : base("Homekeeper##HousingHistoryMain")
     {
         SizeConstraints = new WindowSizeConstraints
         {

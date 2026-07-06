@@ -1,11 +1,15 @@
-# Housing History
+# Homekeeper
 
-Housing History quietly keeps track of everything you do while decorating your
-FFXIV house. Whenever you place, remove, move, rotate, or dye a furnishing, it
-writes it down with a timestamp and the exact coordinates, so you can look back
-at what you just did and put things right if you change your mind. Think of it as
-the memory that goes with Burning Down the House. BDTH handles the precise
-placement, and this one remembers how everything used to be.
+*(Previously called Housing History, the project and repo kept that name so
+existing installs don't break, but the plugin now goes by Homekeeper.)*
+
+Homekeeper quietly keeps track of everything you do while decorating your
+FFXIV house, indoors and out in the yard. Whenever you place, remove, move,
+rotate, or dye a furnishing, it writes it down with a timestamp and the exact
+coordinates, so you can look back at what you just did and put things right if
+you change your mind. Think of it as the memory that goes with Burning Down
+the House. BDTH handles the precise placement, and this one remembers how
+everything used to be.
 
 > By default it just watches and never touches your house.
 
@@ -33,7 +37,7 @@ placement, and this one remembers how everything used to be.
    ```
    https://raw.githubusercontent.com/greenteakitkats/DalamudPlugins/main/repo.json
    ```
-3. Open `/xlplugins`, search for **Housing History**, and click **Install**.
+3. Open `/xlplugins`, search for **Homekeeper**, and click **Install**.
 
 > The repository manifest lives in
 > [greenteakitkats/DalamudPlugins](https://github.com/greenteakitkats/DalamudPlugins),

@@ -1,4 +1,6 @@
-# Developing Housing History
+# Developing Homekeeper
+
+*(The repo is still named HousingHistory, only the in-game display name changed.)*
 
 Maintainer/developer notes. Users don't need any of this, see the
 [README](README.md).
