@@ -75,6 +75,26 @@ static Dictionary<int, FurnitureRecord> D(params (int index, FurnitureRecord rec
     Check(c.Count == 0, "identical -> no change");
 }
 
+// Same item, same everything, but a different slot index (outdoor reindex noise): silent.
+{
+    var c = LayoutDiffer.Diff(D((101, R(100, 5, 5, 5))), D((105, R(100, 5, 5, 5))));
+    Check(c.Count == 0, "reindex with no real change is silent");
+}
+
+// Same item actually moved, and its slot index changed too: one Moved, not remove+place.
+{
+    var c = LayoutDiffer.Diff(D((101, R(100, 0, 0, 0))), D((105, R(100, 5, 0, 0))));
+    Check(c.Count == 1 && c[0].Action == HistoryAction.Moved && c[0].Index == 105, "moved item that also got reindexed");
+}
+
+// Two identical items swap slot indices without moving: silent, not a false move.
+{
+    var oldS = D((101, R(100, 1, 1, 1)), (102, R(100, 9, 9, 9)));
+    var newS = D((201, R(100, 9, 9, 9)), (202, R(100, 1, 1, 1)));
+    var c = LayoutDiffer.Diff(oldS, newS);
+    Check(c.Count == 0, "two identical items reindexing without moving stays silent");
+}
+
 System.Console.WriteLine();
 System.Console.WriteLine(failures == 0 ? "ALL TESTS PASSED" : $"{failures} TEST(S) FAILED");
 return failures == 0 ? 0 : 1;
