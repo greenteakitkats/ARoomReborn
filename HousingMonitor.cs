@@ -474,6 +474,8 @@ public sealed class HousingMonitor : IDisposable
     {
         try
         {
+            MigrateOldHistoryIfNeeded();
+
             if (File.Exists(HistoryPath))
             {
                 var loaded = JsonSerializer.Deserialize<List<HistoryEntry>>(File.ReadAllText(HistoryPath), JsonOpts);
@@ -501,6 +503,39 @@ public sealed class HousingMonitor : IDisposable
         {
             // Non-critical, a bad/old file just means we start with an empty log/layouts.
             Plugin.Log.Warning(ex, "Could not load saved history; starting fresh.");
+        }
+    }
+
+    // Until v0.13.3 the plugin's InternalName was "HousingHistory", which gave it a different
+    // Dalamud config directory. Renaming to "ARoomReborn" started it with an empty log. This
+    // does a one-time copy of the old history.json into the new folder so the visible log
+    // carries over. We deliberately do NOT bring the old layouts.json/layouts_outdoor.json:
+    // those were keyed by the old game-object-index scheme, and diffing the new slot-keyed
+    // reads against them would produce a flood of fake changes. The layouts just re-seed
+    // silently on the next visit instead, which is correct under the new keying.
+    private void MigrateOldHistoryIfNeeded()
+    {
+        // Only migrate into a genuinely fresh install, never overwrite an existing log.
+        if (File.Exists(HistoryPath))
+            return;
+
+        var parent = Plugin.PluginInterface.ConfigDirectory.Parent?.FullName;
+        if (parent == null)
+            return;
+
+        var oldHistory = Path.Combine(parent, "HousingHistory", "history.json");
+        if (!File.Exists(oldHistory))
+            return;
+
+        try
+        {
+            Plugin.PluginInterface.ConfigDirectory.Create();
+            File.Copy(oldHistory, HistoryPath);
+            Plugin.Log.Information("Imported the log from the previous HousingHistory config folder.");
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Warning(ex, "Could not import the old history; starting with an empty log.");
         }
     }
 
