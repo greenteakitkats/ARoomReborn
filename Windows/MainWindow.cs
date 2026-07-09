@@ -12,6 +12,7 @@ public class MainWindow : Window, IDisposable
 {
     private static readonly Vector4 PlacedColor = new(0.40f, 0.85f, 0.45f, 1f);
     private static readonly Vector4 RemovedColor = new(0.92f, 0.52f, 0.40f, 1f);
+    private static readonly Vector4 StoredColor = new(0.55f, 0.72f, 0.74f, 1f);
     private static readonly Vector4 MovedColor = new(0.45f, 0.70f, 0.95f, 1f);
     private static readonly Vector4 RotatedColor = new(0.90f, 0.75f, 0.35f, 1f);
     private static readonly Vector4 DyedColor = new(0.82f, 0.58f, 0.88f, 1f);
@@ -147,7 +148,7 @@ public class MainWindow : Window, IDisposable
                 // Old (greyed) then new. Click either to copy "X Y Z", the old line is the undo value.
                 CopyableCoord(Format(from, e.FromRotation), from, true, row * 2);
                 CopyableCoord("→ " + Format(e.Position, e.Rotation), e.Position, false, row * 2 + 1);
-                DrawUndoButton(from, e.FromRotation, row);
+                DrawUndoButton(e, from, e.FromRotation, row);
             }
             else
             {
@@ -169,6 +170,8 @@ public class MainWindow : Window, IDisposable
     {
         HistoryAction.Placed => cfg.ShowPlaced,
         HistoryAction.Removed => cfg.ShowRemoved,
+        HistoryAction.Stored => cfg.ShowRemoved, // stored items ride along with the Removed filter
+
         HistoryAction.Moved => cfg.ShowMoved,
         HistoryAction.Rotated => cfg.ShowMoved, // rotations share the "Moved" filter
         HistoryAction.Redyed => cfg.ShowDyed,
@@ -181,6 +184,7 @@ public class MainWindow : Window, IDisposable
         {
             case HistoryAction.Placed: ImGui.TextColored(PlacedColor, "Placed"); break;
             case HistoryAction.Removed: ImGui.TextColored(RemovedColor, "Removed"); break;
+            case HistoryAction.Stored: ImGui.TextColored(StoredColor, "Stored"); break;
             case HistoryAction.Moved: ImGui.TextColored(MovedColor, "Moved"); break;
             case HistoryAction.Rotated: ImGui.TextColored(RotatedColor, "Rotated"); break;
             case HistoryAction.Redyed: ImGui.TextColored(DyedColor, "Dyed"); break;
@@ -217,20 +221,31 @@ public class MainWindow : Window, IDisposable
         }
     }
 
-    private static void DrawUndoButton(Vector3 from, float fromRotation, int row)
+    private void DrawUndoButton(HistoryEntry e, Vector3 from, float fromRotation, int row)
     {
         if (ImGui.SmallButton($"Undo##undo{row}"))
-            HousingWriter.TryUndo(from, fromRotation);
+        {
+            // Try the one-click path first: it finds and selects the item for you, then snaps
+            // it back. If that can't run (item moved again, out of range, or the select hook
+            // isn't available), fall back to acting on whatever you already have selected.
+            if (!plugin.Monitor.TrySmartUndo(e))
+                HousingWriter.TryUndo(from, fromRotation);
+        }
 
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip(HousingWriter.CanApply()
-                ? "Snap the selected item back to where it was, position and facing."
-                : "Select this item in housing layout mode first, then click to undo.");
+        {
+            if (HousingWriter.CanSmartUndo())
+                ImGui.SetTooltip("Click to select this item and snap it back, position and facing.");
+            else if (HousingWriter.CanApply())
+                ImGui.SetTooltip("Snap the selected item back to where it was, position and facing.");
+            else
+                ImGui.SetTooltip("Enter housing layout mode, then click to undo (it picks the item for you).");
+        }
     }
 
     private void DrawTodaySummary()
     {
-        int placed = 0, removed = 0, moved = 0, dyed = 0;
+        int placed = 0, removed = 0, stored = 0, moved = 0, dyed = 0;
         var today = DateTime.Now.Date;
         foreach (var e in plugin.Monitor.Entries)
         {
@@ -240,13 +255,16 @@ public class MainWindow : Window, IDisposable
             {
                 case HistoryAction.Placed: placed++; break;
                 case HistoryAction.Removed: removed++; break;
+                case HistoryAction.Stored: stored++; break;
                 case HistoryAction.Moved:
                 case HistoryAction.Rotated: moved++; break;
                 case HistoryAction.Redyed: dyed++; break;
             }
         }
 
-        ImGui.TextDisabled($"Today: {placed} placed · {removed} removed · {moved} moved · {dyed} dyed");
+        // Only show the "stored" tally once there's something to show, to keep the line short.
+        var storedPart = stored > 0 ? $" · {stored} stored" : "";
+        ImGui.TextDisabled($"Today: {placed} placed · {removed} removed{storedPart} · {moved} moved · {dyed} dyed");
     }
 
     private static void DrawDyeSwatch(byte stainId, int id)

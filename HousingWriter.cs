@@ -1,5 +1,9 @@
+using System;
 using System.Numerics;
+using System.Runtime.InteropServices;
+using Dalamud.Plugin.Services;
 using FFXIVClientStructs.FFXIV.Client.LayoutEngine;
+using FFXIVClientStructs.FFXIV.Client.LayoutEngine.Group;
 
 namespace ARoomReborn;
 
@@ -11,6 +15,59 @@ namespace ARoomReborn;
 /// </summary>
 internal static unsafe class HousingWriter
 {
+    // The game's own "select this housing item" function, so smart undo can pick the item for
+    // you instead of you clicking it first. Same signature scan Burning Down the House uses. If
+    // the scan misses (e.g. after a game patch shifts it), this stays null and smart undo
+    // quietly falls back to the manual select-then-undo flow.
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate void SelectItemDelegate(IntPtr housingStructure, IntPtr item);
+
+    private static SelectItemDelegate? selectItem;
+
+    /// <summary>Resolve the select-item function once at startup. Safe to call with a null scanner.</summary>
+    public static void Init(ISigScanner? sigScanner)
+    {
+        if (sigScanner == null)
+            return;
+        try
+        {
+            var address = sigScanner.ScanText("48 85 D2 0F 84 ?? ?? ?? ?? 53 41 ?? 48 83 ?? ?? 48 89");
+            selectItem = Marshal.GetDelegateForFunctionPointer<SelectItemDelegate>(address);
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Warning(ex, "Could not find the housing select-item function; smart undo will fall back to manual selection.");
+            selectItem = null;
+        }
+    }
+
+    /// <summary>True when smart undo can select an item for you (the hook resolved and we're editing).</summary>
+    public static bool CanSmartUndo()
+    {
+        var housing = Housing();
+        return selectItem != null && housing != null && housing->Mode == HousingLayoutMode.Rotate;
+    }
+
+    /// <summary>
+    /// Select the given item in the housing editor, then snap it back to a previous
+    /// position/facing, all without the user having to click it first. Returns false if the
+    /// hook is unavailable, we're not in edit mode, or the selection didn't take.
+    /// </summary>
+    public static bool TrySelectAndUndo(SharedGroupLayoutInstance* item, Vector3 position, float rotationRadians)
+    {
+        var housing = Housing();
+        if (selectItem == null || housing == null || item == null || housing->Mode != HousingLayoutMode.Rotate)
+            return false;
+
+        selectItem((IntPtr)housing, (IntPtr)item);
+        if (housing->ActiveItem != item)
+            return false; // the game didn't take the selection; leave everything untouched
+
+        housing->ActiveItem->Transform.Translation = position;
+        housing->ActiveItem->Transform.Rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitY, rotationRadians);
+        return true;
+    }
+
     private static HousingStructure* Housing()
     {
         var layoutWorld = LayoutWorld.Instance();

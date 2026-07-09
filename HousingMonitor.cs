@@ -58,6 +58,13 @@ public sealed class HousingMonitor : IDisposable
     private const double DyeSettleSeconds = 2.5;
     private readonly Dictionary<int, (byte target, DateTime since)> pendingDye = new();
 
+    // Best-effort "stored vs removed" detection: we can't see where a removed item went, but
+    // if the housing storeroom gained items on the same tick a removal was detected, that item
+    // was almost certainly stored rather than sent to inventory. We track the storeroom's item
+    // count between polls to spot that growth. -1 means "no baseline yet".
+    private int prevStoreroomItems = -1;
+    private HouseLocation prevStoreroomLoc;
+
     private bool dirty;
     private DateTime lastSave = DateTime.MinValue;
 
@@ -94,6 +101,7 @@ public sealed class HousingMonitor : IDisposable
         settleLastCount = -1;
         settleCount = 0;
         pendingDye.Clear();
+        prevStoreroomItems = -1;
     }
 
     private void OnUpdate(IFramework framework)
@@ -231,6 +239,18 @@ public sealed class HousingMonitor : IDisposable
 
     private void DiffAndLog(Dictionary<int, FurnitureRecord> oldSet, Dictionary<int, FurnitureRecord> newSet, ulong houseId, HouseLocation location, bool live)
     {
+        // How many of this tick's removals went to the storeroom (see prevStoreroomItems). Only
+        // live: the away-diff has no before/after storeroom snapshot, so those stay plain Removed.
+        var storedThisTick = 0;
+        if (live)
+        {
+            var cur = StoreroomItemCount();
+            if (prevStoreroomItems >= 0 && location == prevStoreroomLoc)
+                storedThisTick = Math.Max(0, cur - prevStoreroomItems);
+            prevStoreroomItems = cur;
+            prevStoreroomLoc = location;
+        }
+
         foreach (var change in LayoutDiffer.Diff(oldSet, newSet))
         {
             switch (change.Action)
@@ -239,7 +259,11 @@ public sealed class HousingMonitor : IDisposable
                     LogSimple(HistoryAction.Placed, change.Index, change.After, houseId, location);
                     break;
                 case HistoryAction.Removed:
-                    LogSimple(HistoryAction.Removed, change.Index, change.Before, houseId, location);
+                    // If the storeroom grew this tick, attribute the growth to these removals.
+                    var wasStored = storedThisTick > 0;
+                    if (wasStored)
+                        storedThisTick--;
+                    LogSimple(wasStored ? HistoryAction.Stored : HistoryAction.Removed, change.Index, change.Before, houseId, location);
                     pendingDye.Remove(change.Index);
                     break;
                 case HistoryAction.Moved:
@@ -393,6 +417,77 @@ public sealed class HousingMonitor : IDisposable
     {
         var mask = location == HouseLocation.Outdoor ? 0x30000u : 0x20000u;
         return mask | rawId;
+    }
+
+    /// <summary>
+    /// Total number of items sitting in the housing storeroom containers. Used only to notice
+    /// growth between polls (an item being stored), not for exact contents. The storeroom
+    /// containers live in the 27000 inventory-type block (exterior plus the interior rooms).
+    /// </summary>
+    private static unsafe int StoreroomItemCount()
+    {
+        var mgr = InventoryManager.Instance();
+        if (mgr == null)
+            return 0;
+
+        var total = 0;
+        for (var t = 27000; t <= 27020; t++)
+        {
+            var container = mgr->GetInventoryContainer((InventoryType)t);
+            if (container == null || !container->IsLoaded)
+                continue;
+            for (var i = 0; i < container->Size; i++)
+            {
+                var slot = container->GetInventorySlot(i);
+                if (slot != null && slot->ItemId != 0)
+                    total++;
+            }
+        }
+        return total;
+    }
+
+    /// <summary>
+    /// For the smart undo button: find the item this history entry refers to as it sits right
+    /// now (same sheet row, still at the entry's "new" position), select it in the game's
+    /// housing editor, and snap it back to the entry's previous position and facing, all in one
+    /// click. Returns false if the item can't be found (already moved again, or not loaded in),
+    /// if we're not in layout edit mode, or if the select-item hook isn't available, in which
+    /// case the caller falls back to the manual select-then-undo flow.
+    /// </summary>
+    public unsafe bool TrySmartUndo(HistoryEntry e)
+    {
+        if (e.FromPosition is not { } from)
+            return false;
+
+        var manager = HousingManager.Instance();
+        var furnitureManager = manager != null ? manager->GetFurnitureManager() : null;
+        if (furnitureManager == null)
+            return false;
+
+        var objects = &furnitureManager->ObjectManager.ObjectArray;
+        var span = furnitureManager->FurnitureMemory;
+        for (var i = 0; i < span.Length - 1; i++)
+        {
+            ref var f = ref span[i];
+            if (f.Id == 0 || ResolveRowId(f.Id, e.Location) != e.FurnitureId)
+                continue;
+
+            var pos = new Vector3(f.Position.X, f.Position.Y, f.Position.Z);
+            if (Vector3.Distance(pos, e.Position) > 0.05f)
+                continue; // this instance isn't sitting where the entry left it
+
+            // Found it. Its live game object carries the layout instance the editor selects.
+            var idx = f.Index;
+            if (idx < 0 || idx >= objects->ObjectCount)
+                return false; // out of render range, no game object to select
+            var gameObject = objects->Objects[idx].Value;
+            if (gameObject == null || gameObject->SharedGroupLayoutInstance == null)
+                return false;
+
+            return HousingWriter.TrySelectAndUndo(gameObject->SharedGroupLayoutInstance, from, e.FromRotation);
+        }
+
+        return false;
     }
 
     /// <summary>

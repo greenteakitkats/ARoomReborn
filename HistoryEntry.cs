@@ -10,6 +10,9 @@ public enum HistoryAction
     Moved,
     Rotated,
     Redyed,
+    // Appended, not inserted: HistoryAction is serialized by numeric value in history.json,
+    // so the existing five must keep their positions or old saved logs would be misread.
+    Stored, // removed straight into the housing storeroom rather than back to your inventory
 }
 
 public enum HouseLocation
