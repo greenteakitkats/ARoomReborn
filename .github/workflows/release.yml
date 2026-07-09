@@ -37,3 +37,7 @@ jobs:
         with:
           files: bin/Release/ARoomReborn/latest.zip
           generate_release_notes: true
+          # Tags with a suffix (e.g. v0.15.0-test1) are experimental test builds: mark them
+          # prerelease so "releases/latest" and the shared repo.json ignore them, keeping the
+          # stable install untouched. Clean tags (v0.15.0) publish as normal releases.
+          prerelease: ${{ contains(github.ref_name, '-') }}

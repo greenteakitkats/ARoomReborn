@@ -1,0 +1,23 @@
+[
+  {
+    "Author": "greenteakitkats",
+    "Name": "A Room Reborn (Testing)",
+    "InternalName": "ARoomReborn",
+    "AssemblyVersion": "0.15.0.0",
+    "TestingAssemblyVersion": "0.15.0.0",
+    "Description": "Experimental test build of A Room Reborn. Adds stored-vs-removed detection and one-click smart undo. Install this only to try those out; the stable build lives in the normal repo. Type /houselog to open it.",
+    "ApplicableVersion": "any",
+    "DalamudApiLevel": 15,
+    "IsTestingExclusive": false,
+    "RepoUrl": "https://github.com/greenteakitkats/ARoomReborn",
+    "Tags": [
+      "housing",
+      "history",
+      "qol",
+      "furniture"
+    ],
+    "DownloadLinkInstall": "https://github.com/greenteakitkats/ARoomReborn/releases/download/v0.15.0-test1/latest.zip",
+    "DownloadLinkUpdate": "https://github.com/greenteakitkats/ARoomReborn/releases/download/v0.15.0-test1/latest.zip",
+    "DownloadLinkTesting": "https://github.com/greenteakitkats/ARoomReborn/releases/download/v0.15.0-test1/latest.zip"
+  }
+]
