@@ -9,7 +9,7 @@ internal readonly record struct LayoutChange(HistoryAction Action, int Index, Fu
 
 /// <summary>
 /// Pure diff logic, no Dalamud or game dependencies, so it can be unit-tested in isolation.
-/// Given two snapshots keyed by object index, produces the list of changes between them.
+/// Given two snapshots keyed by storage slot, produces the list of changes between them.
 /// </summary>
 internal static class LayoutDiffer
 {

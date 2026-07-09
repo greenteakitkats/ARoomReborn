@@ -5,17 +5,27 @@ Maintainer/developer notes. Users don't need any of this, see the
 
 ## How it works
 
-- A few times a second, on the framework thread, it snapshots the indoor furniture
-  set via `HousingManager → GetFurnitureManager() → FurnitureMemory`, keyed by each
-  object's stable `HousingFurniture.Index`. Per item it records id, position,
-  rotation, and stain.
+- A few times a second, on the framework thread, it snapshots the furniture set
+  (indoor or yard, depending on where you're standing) via `HousingManager →
+  GetFurnitureManager() → FurnitureMemory`, keyed by each item's slot position in
+  that array. Per item it records id, position, rotation, and stain.
+  - Deliberately *not* keyed by `HousingFurniture.Index`: that field only points
+    into the live game-object array while an item is actually spawned/streamed in.
+    Outdoors most of a plot isn't loaded at once, so it reads -1 for anything out
+    of range, and every unloaded item collapsing onto that one key is what caused
+    the "kept saying placed and removed" yard bug. The array slot is the plot's
+    persisted storage position, populated whether or not the item is rendered.
+- Item names come from `HousingFurniture.Id` masked with `0x20000` (indoors) or
+  `0x30000` (outdoors) and looked up in the `HousingFurniture` sheet, per the field's
+  own doc comment in FFXIVClientStructs. No game-object read needed, so it resolves
+  even for items that haven't streamed in yet.
 - `HousingFurnitureManager.LastUpdate` is checked first; if furniture hasn't changed
   since the last processed snapshot, the diff is skipped.
 - `LayoutDiffer` (pure, no Dalamud deps) compares two snapshots and emits changes:
-  - index appears → **Placed**; index gone → **Removed**
-  - same index, position changed → **Moved**; rotation only → **Rotated**;
+  - slot appears → **Placed**; slot gone → **Removed**
+  - same slot, position changed → **Moved**; rotation only → **Rotated**;
     stain only → **Redyed**
-  - same index, different furnishing id → slot reuse → Removed + Placed
+  - same slot, different furnishing id → slot reuse → Removed + Placed
 - Live drags/turns coalesce into one row within 5s. The read loop is wrapped so a
   struct mismatch after a patch fails soft (logs once, pauses) instead of crashing.
 - On entering a house the furniture list streams in, so the baseline is only
@@ -93,9 +103,9 @@ update-proof. Strategy:
 `/houselog dump` prints most of this to `/xllog` in one shot.
 
 1. **`FurnitureMemory` accessor** resolves (generated accessor for `_furnitureMemory`).
-2. **Names** appear instead of `Furnishing #N` (else adjust the id key in
-   `NameResolver.cs`; `HousingFurniture.Id` is documented as `0x20000 | Id` indoors).
-3. **`Index` stability**, a move shows as **Moved**, not Removed+Placed.
+2. **Names** appear instead of `Furnishing #N` (else the mask in
+   `HousingMonitor.ResolveRowId` needs adjusting, both indoors and out).
+3. **Slot stability**, a move shows as **Moved**, not Removed+Placed.
 4. **Rotation units**, angles look right (shown as degrees assuming radians).
 5. **Dye swatch colors** aren't channel-swapped (`Stain.Color` packing).
 6. **Persistence**, `history.json` / `layouts.json` round-trip (System.Text.Json
@@ -116,4 +126,3 @@ update-proof. Strategy:
 - Right-click row → link item in chat / copy
 - Optional removal notification
 - Click-to-highlight an item in the world
-- Outdoor / ward support

@@ -149,7 +149,7 @@ public sealed class HousingMonitor : IDisposable
             return;
         lastStamp = stamp;
 
-        var current = BuildSnapshot(furnitureManager);
+        var current = BuildSnapshot(furnitureManager, location.Value);
         if (current == null)
         {
             haveBaseline = false; // garbage read, wait for a clean one
@@ -319,9 +319,7 @@ public sealed class HousingMonitor : IDisposable
         return result;
     }
 
-    // Prefer the resolved sheet row for naming; fall back to the raw id so the log shows
-    // a meaningful "#<rawId>" rather than "#0" if row resolution isn't working yet.
-    private static uint DisplayId(FurnitureRecord r) => r.RowId != 0 ? r.RowId : r.Id;
+    private static uint DisplayId(FurnitureRecord r) => r.RowId;
 
     private void LogSimple(HistoryAction action, int index, FurnitureRecord r, ulong houseId, HouseLocation location)
         => AddEntry(new HistoryEntry(DateTime.Now, action, index, DisplayId(r), NameResolver.Resolve(DisplayId(r)),
@@ -355,12 +353,19 @@ public sealed class HousingMonitor : IDisposable
         Plugin.Log.Information($"[{entry.Location}] {entry.Action}{(entry.WhileAway ? " (away)" : "")}: {entry.ItemName} (#{entry.FurnitureId}) idx={entry.ObjectIndex} @ {entry.Position}");
     }
 
-    private static unsafe Dictionary<int, FurnitureRecord>? BuildSnapshot(HousingFurnitureManager* furnitureManager)
+    private static unsafe Dictionary<int, FurnitureRecord>? BuildSnapshot(HousingFurnitureManager* furnitureManager, HouseLocation location)
     {
         var map = new Dictionary<int, FurnitureRecord>();
 
         // FurnitureMemory is the generated accessor for `_furnitureMemory` (length 1462).
         // Index 1461 is the temporary/preview object while dragging, so skip the last slot.
+        // Key by the array slot itself, not HousingFurniture.Index: that field only points
+        // into the live game-object array while the item is actually spawned/streamed in,
+        // and outdoors most of the plot isn't loaded at once, so it reads -1 for anything
+        // out of range. Every unloaded item collapsing onto the same -1 key is what caused
+        // the "kept saying placed and removed" noise in the yard. The array slot itself is
+        // the plot's persisted storage position, populated whether or not the item is
+        // currently rendered, so it stays stable across streaming.
         var span = furnitureManager->FurnitureMemory;
         for (var i = 0; i < span.Length - 1; i++)
         {
@@ -372,27 +377,22 @@ public sealed class HousingMonitor : IDisposable
             if (float.IsNaN(pos.X) || float.IsNaN(pos.Y) || float.IsNaN(pos.Z))
                 return null; // garbage read (e.g. shifted offsets), signal a bad snapshot
 
-            map[f.Index] = new FurnitureRecord(f.Id, ReadRowId(furnitureManager, f.Index), pos, f.Rotation, f.Stain);
+            map[i] = new FurnitureRecord(f.Id, ResolveRowId(f.Id, location), pos, f.Rotation, f.Stain);
         }
 
         return map;
     }
 
     /// <summary>
-    /// The HousingFurniture sheet row for a placed object, read from the furniture game
-    /// object (its GimmickId) via the object manager. This, not HousingFurniture.Id, is
-    /// what maps to the item name. See MakePlace for the reference implementation.
+    /// The HousingFurniture sheet row for a placed object. Per FFXIVClientStructs'
+    /// HousingFurniture.Id docs, the row is (0x20000 | Id) indoors and (0x30000 | Id)
+    /// outdoors, so this needs nothing from the item's game object (which may not even
+    /// exist yet if it hasn't streamed in), just which side of the door we're standing on.
     /// </summary>
-    private static unsafe uint ReadRowId(HousingFurnitureManager* furnitureManager, int index)
+    private static uint ResolveRowId(uint rawId, HouseLocation location)
     {
-        var objects = &furnitureManager->ObjectManager.ObjectArray;
-        if (index < 0 || index >= objects->ObjectCount)
-            return 0;
-
-        var gameObject = objects->Objects[index].Value;
-        // The HousingFurniture sheet row lives in the game object's BaseId (offset 0x84).
-        // Confirmed against ReMakePlace, whose housingRowId is at 0x84 on the current client.
-        return gameObject != null ? gameObject->BaseId : 0u;
+        var mask = location == HouseLocation.Outdoor ? 0x30000u : 0x20000u;
+        return mask | rawId;
     }
 
     /// <summary>
@@ -408,11 +408,14 @@ public sealed class HousingMonitor : IDisposable
             if (manager == null)
                 return;
 
+            var location = manager->IsOutside() ? HouseLocation.Outdoor
+                : manager->IsInside() ? HouseLocation.Indoor
+                : (HouseLocation?)null;
             Plugin.Log.Information($"[dump] IsInside={manager->IsInside()} IsOutside={manager->IsOutside()} HouseId={(ulong)manager->GetCurrentHouseId():X}");
 
             var furnitureManager = manager->GetFurnitureManager();
             Plugin.Log.Information($"[dump] FurnitureManager: {(furnitureManager == null ? "null" : "ok")}");
-            if (furnitureManager == null)
+            if (furnitureManager == null || location == null)
                 return;
 
             var span = furnitureManager->FurnitureMemory;
@@ -427,19 +430,16 @@ public sealed class HousingMonitor : IDisposable
                 count++;
                 if (shown < 6)
                 {
+                    // For comparison: whether the item's game object is currently spawned
+                    // (only true when it's actually streamed in/rendered).
                     var objects = &furnitureManager->ObjectManager.ObjectArray;
                     var inRange = f.Index >= 0 && f.Index < objects->ObjectCount;
                     var gobj = inRange ? objects->Objects[f.Index].Value : null;
-                    uint layoutId = gobj != null ? gobj->LayoutId : 0;
-                    uint gimmickId = gobj != null ? gobj->GimmickId : 0;
-                    uint baseId = gobj != null ? gobj->BaseId : 0;
 
+                    var rowId = ResolveRowId(f.Id, location.Value);
                     Plugin.Log.Information(
-                        $"[dump] rawId={f.Id} idx={f.Index} objCount={objects->ObjectCount} obj={(gobj == null ? "null" : "ok")} " +
-                        $"layoutId={layoutId} gimmickId={gimmickId} baseId={baseId}");
-                    Plugin.Log.Information(
-                        $"[dump]   names: gimmick->\"{NameResolver.Resolve(gimmickId)}\" layout->\"{NameResolver.Resolve(layoutId)}\" " +
-                        $"base->\"{NameResolver.Resolve(baseId)}\" rawLow->\"{NameResolver.Resolve(f.Id & 0xFFFF)}\"");
+                        $"[dump] slot={i} rawId={f.Id} objIdx={f.Index} obj={(gobj == null ? "null" : "ok")} " +
+                        $"rowId={rowId} name=\"{NameResolver.Resolve(rowId)}\"");
                     shown++;
                 }
             }
