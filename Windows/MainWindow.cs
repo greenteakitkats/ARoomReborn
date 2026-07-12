@@ -17,6 +17,9 @@ public class MainWindow : Window, IDisposable
     private static readonly Vector4 RotatedColor = new(0.90f, 0.75f, 0.35f, 1f);
     private static readonly Vector4 DyedColor = new(0.82f, 0.58f, 0.88f, 1f);
 
+    private static readonly string[] HouseScopeLabels = { "This house", "All houses" };
+    private static readonly string[] LocationScopeLabels = { "Indoor + yard", "Indoor only", "Yard only" };
+
     private readonly Plugin plugin;
     private string search = string.Empty;
 
@@ -70,6 +73,32 @@ public class MainWindow : Window, IDisposable
             ImGui.OpenPopup("ConfirmClear");
         DrawClearConfirm();
 
+        // Row 1.5: which house and which side of the door. Every house keeps its own history
+        // by default, so switching plots doesn't dump you into one giant mixed log, "All
+        // houses" is there for whenever you actually want the full picture.
+        var effectiveHouseId = plugin.Monitor.CurrentHouseId
+            ?? (plugin.Monitor.Entries.Count > 0 ? plugin.Monitor.Entries[0].HouseId : (ulong?)null);
+
+        ImGui.SetNextItemWidth(120);
+        var houseIdx = (int)cfg.HouseFilter;
+        if (ImGui.Combo("##housescope", ref houseIdx, HouseScopeLabels, HouseScopeLabels.Length))
+        {
+            cfg.HouseFilter = (HouseScope)houseIdx;
+            cfg.Save();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(effectiveHouseId is { } hid
+                ? $"\"This house\" follows wherever you're currently in or last visited (house {hid:X})."
+                : "\"This house\" has nothing to scope to yet, visit a house first.");
+        ImGui.SameLine();
+        ImGui.SetNextItemWidth(110);
+        var locIdx = (int)cfg.LocationFilter;
+        if (ImGui.Combo("##locationscope", ref locIdx, LocationScopeLabels, LocationScopeLabels.Length))
+        {
+            cfg.LocationFilter = (LocationScope)locIdx;
+            cfg.Save();
+        }
+
         // Row 2: settings you set once and forget, kept visually separate from the filters
         // above so they don't compete for attention every time you open the window.
         DrawFilter("Auto-open", cfg.AutoOpenWithHousing, v => { cfg.AutoOpenWithHousing = v; cfg.Save(); });
@@ -103,6 +132,12 @@ public class MainWindow : Window, IDisposable
                     if (search.Length > 0 && e.ItemName.IndexOf(search, StringComparison.OrdinalIgnoreCase) < 0)
                         continue;
                     if (cfg.ShowOnlySinceLastOpen && e.Time <= cfg.SeenWatermark)
+                        continue;
+                    if (cfg.HouseFilter == HouseScope.ThisHouse && effectiveHouseId is { } scopedHouse && e.HouseId != scopedHouse)
+                        continue;
+                    if (cfg.LocationFilter == LocationScope.IndoorOnly && e.Location != HouseLocation.Indoor)
+                        continue;
+                    if (cfg.LocationFilter == LocationScope.OutdoorOnly && e.Location != HouseLocation.Outdoor)
                         continue;
 
                     any = true;
@@ -195,8 +230,9 @@ public class MainWindow : Window, IDisposable
             return;
         }
 
-        var reason = cfg.ShowOnlySinceLastOpen
-            ? "hidden because \"New only\" is on"
+        var reason = cfg.ShowOnlySinceLastOpen ? "hidden because \"New only\" is on"
+            : cfg.HouseFilter == HouseScope.ThisHouse ? "hidden because you're scoped to \"This house\""
+            : cfg.LocationFilter != LocationScope.Both ? "hidden by your indoor/yard filter"
             : "hidden by your action filters";
         ImGui.TextDisabled($"{total} change{(total == 1 ? "" : "s")} logged, but {reason}.");
         ImGui.SameLine();
@@ -204,6 +240,8 @@ public class MainWindow : Window, IDisposable
         {
             cfg.ShowPlaced = cfg.ShowRemoved = cfg.ShowStored = cfg.ShowMoved = cfg.ShowDyed = true;
             cfg.ShowOnlySinceLastOpen = false;
+            cfg.HouseFilter = HouseScope.AllHouses;
+            cfg.LocationFilter = LocationScope.Both;
             cfg.Save();
         }
     }

@@ -70,6 +70,9 @@ public sealed class HousingMonitor : IDisposable
 
     public IReadOnlyList<HistoryEntry> Entries => entries;
 
+    /// <summary>The house you're currently standing in (indoors or its yard), if any.</summary>
+    public ulong? CurrentHouseId => haveBaseline ? baselineHouseId : null;
+
     public HousingMonitor(Plugin plugin)
     {
         this.plugin = plugin;

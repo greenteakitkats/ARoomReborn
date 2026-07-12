@@ -3,6 +3,9 @@ using System;
 
 namespace ARoomReborn;
 
+public enum HouseScope { ThisHouse, AllHouses }
+public enum LocationScope { Both, IndoorOnly, OutdoorOnly }
+
 [Serializable]
 public class Configuration : IPluginConfiguration
 {
@@ -22,6 +25,12 @@ public class Configuration : IPluginConfiguration
 
     /// <summary>Open the log automatically when the housing furnishing menu appears.</summary>
     public bool AutoOpenWithHousing { get; set; } = true;
+
+    /// <summary>Show only the house you're currently in, or everything you've ever logged.</summary>
+    public HouseScope HouseFilter { get; set; } = HouseScope.ThisHouse;
+
+    /// <summary>Show indoor entries, outdoor (yard) entries, or both.</summary>
+    public LocationScope LocationFilter { get; set; } = LocationScope.Both;
 
     /// <summary>Only show entries newer than when the window was last closed.</summary>
     public bool ShowOnlySinceLastOpen { get; set; } = false;
