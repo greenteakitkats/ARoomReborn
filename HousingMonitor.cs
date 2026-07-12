@@ -74,6 +74,13 @@ public sealed class HousingMonitor : IDisposable
     private Dictionary<uint, int> prevInventoryContents = new();
     private bool haveStorageBaseline;
 
+    // This tick's item-id deltas, valid for the current Poll() call only: computed early,
+    // partly consumed by DiffAndLog when a furniture Placed/Removed correlates with one
+    // unambiguously (see TryResolveViaStorageDelta), whatever's left gets logged as a direct
+    // Deposited/Withdrawn transfer at the end of Poll().
+    private readonly Dictionary<uint, int> tickStoreroomDelta = new();
+    private readonly Dictionary<uint, int> tickInventoryDelta = new();
+
     private bool dirty;
     private DateTime lastSave = DateTime.MinValue;
 
@@ -115,6 +122,8 @@ public sealed class HousingMonitor : IDisposable
         pendingDye.Clear();
         prevStoreroomItems = -1;
         haveStorageBaseline = false;
+        tickStoreroomDelta.Clear();
+        tickInventoryDelta.Clear();
     }
 
     private void OnUpdate(IFramework framework)
@@ -168,13 +177,18 @@ public sealed class HousingMonitor : IDisposable
         // LastUpdate below, check every poll while settled in the same house/location we
         // already have a baseline for, or the early return right after would skip it entirely.
         if (haveBaseline && houseId == baselineHouseId && location == baselineLocation)
-            CheckStorageTransfers(houseId, location.Value);
+            UpdateStorageDeltas();
 
         // LastUpdate bumps ~every 200ms when furniture state changes. If it hasn't moved
         // since we last processed, there's nothing to diff, skip the snapshot build.
         var stamp = furnitureManager->LastUpdate;
         if (haveBaseline && houseId == baselineHouseId && location == baselineLocation && stamp == lastStamp)
+        {
+            // Furniture layout didn't change, so nothing below will consume the delta just
+            // computed above, log a pure inventory/storeroom transfer directly if there is one.
+            LogUnmatchedStorageTransfers(houseId, location.Value);
             return;
+        }
         lastStamp = stamp;
 
         var current = BuildSnapshot(furnitureManager, location.Value);
@@ -239,12 +253,15 @@ public sealed class HousingMonitor : IDisposable
             settleLastCount = -1;
             settleCount = 0;
             haveStorageBaseline = false; // different house/location now, storeroom contents reset
+            tickStoreroomDelta.Clear();
+            tickInventoryDelta.Clear();
             pendingDye.Clear();
             RememberLayout(houseId, location.Value, current);
             return;
         }
 
         DiffAndLog(baseline, current, houseId, location.Value, live: true);
+        LogUnmatchedStorageTransfers(houseId, location.Value);
         baseline = MergeBaseline(baseline, current);
         RememberLayout(houseId, location.Value, baseline);
     }
@@ -367,8 +384,22 @@ public sealed class HousingMonitor : IDisposable
     private static uint DisplayId(FurnitureRecord r) => r.RowId;
 
     private void LogSimple(HistoryAction action, int index, FurnitureRecord r, ulong houseId, HouseLocation location)
-        => AddEntry(new HistoryEntry(DateTime.Now, action, index, DisplayId(r), NameResolver.Resolve(DisplayId(r)),
-            r.Position, r.Rotation, null, 0f, r.Stain, r.Stain, houseId, Plugin.ClientState.TerritoryType, markAway, location));
+    {
+        // A Removed/Stored item went somewhere (storeroom or inventory); a Placed item came
+        // from somewhere. If exactly one real item unambiguously did that this same tick, its
+        // confirmed name beats guessing a HousingFurniture sheet row, direct content diffing
+        // has been reliable every time so far, the row guess hasn't.
+        var grew = action is HistoryAction.Removed or HistoryAction.Stored;
+        var resolved = action is HistoryAction.Placed or HistoryAction.Removed or HistoryAction.Stored
+            ? TryResolveViaStorageDelta(grew)
+            : null;
+        var id = resolved?.itemId ?? DisplayId(r);
+        var name = resolved?.name ?? NameResolver.Resolve(DisplayId(r));
+
+        AddEntry(new HistoryEntry(DateTime.Now, action, index, id, name,
+            r.Position, r.Rotation, null, 0f, r.Stain, r.Stain, houseId, Plugin.ClientState.TerritoryType, markAway, location,
+            Quantity: 1, IsRawItemId: resolved != null));
+    }
 
     private void LogRedyed(int index, FurnitureRecord before, FurnitureRecord now, ulong houseId, HouseLocation location)
         => AddEntry(new HistoryEntry(DateTime.Now, HistoryAction.Redyed, index, DisplayId(now), NameResolver.Resolve(DisplayId(now)),
@@ -511,40 +542,40 @@ public sealed class HousingMonitor : IDisposable
     /// invisible to everything else here, since Placed/Removed only fire on layout changes.
     /// Best-effort like the aggregate check: if a read lands mid-transfer it can miss one.
     /// </summary>
-    private unsafe void CheckStorageTransfers(ulong houseId, HouseLocation location)
+    /// <summary>
+    /// Recomputes this tick's storeroom/inventory item deltas (what changed since the last
+    /// poll), but doesn't log anything yet. Split from logging so a furniture Placed/Removed
+    /// this same tick gets first claim on a matching delta (see TryResolveViaStorageDelta):
+    /// content diffing has proven 100% reliable at naming an item correctly, unlike guessing
+    /// its HousingFurniture sheet row, so it's worth using for room events too when there's an
+    /// unambiguous match, not just for pure inventory/storeroom transfers.
+    /// </summary>
+    private unsafe void UpdateStorageDeltas()
     {
+        tickStoreroomDelta.Clear();
+        tickInventoryDelta.Clear();
+
         var curStore = SnapshotItemContents(27000, 27020);
         var curInv = SnapshotItemContents(RegularInventoryTypes);
 
         if (haveStorageBaseline)
         {
-            var itemIds = new HashSet<uint>(prevStoreroomContents.Keys);
-            itemIds.UnionWith(curStore.Keys);
-
-            foreach (var itemId in itemIds)
+            var storeIds = new HashSet<uint>(prevStoreroomContents.Keys);
+            storeIds.UnionWith(curStore.Keys);
+            foreach (var itemId in storeIds)
             {
-                var storeDelta = curStore.GetValueOrDefault(itemId) - prevStoreroomContents.GetValueOrDefault(itemId);
-                if (storeDelta == 0)
-                    continue;
+                var d = curStore.GetValueOrDefault(itemId) - prevStoreroomContents.GetValueOrDefault(itemId);
+                if (d != 0)
+                    tickStoreroomDelta[itemId] = d;
+            }
 
-                var invDelta = curInv.GetValueOrDefault(itemId) - prevInventoryContents.GetValueOrDefault(itemId);
-
-                // A closed loop: the same item left one place and landed in the other, same
-                // tick. Anything else (storeroom grew with no matching inventory drop) is
-                // covered separately by the aggregate "Stored" check, which correlates it
-                // against a furniture removal from the room instead.
-                if (storeDelta > 0 && invDelta < 0)
-                {
-                    var moved = Math.Min(storeDelta, -invDelta);
-                    if (moved > 0)
-                        LogStorageTransfer(HistoryAction.Deposited, itemId, moved, houseId, location);
-                }
-                else if (storeDelta < 0 && invDelta > 0)
-                {
-                    var moved = Math.Min(-storeDelta, invDelta);
-                    if (moved > 0)
-                        LogStorageTransfer(HistoryAction.Withdrawn, itemId, moved, houseId, location);
-                }
+            var invIds = new HashSet<uint>(prevInventoryContents.Keys);
+            invIds.UnionWith(curInv.Keys);
+            foreach (var itemId in invIds)
+            {
+                var d = curInv.GetValueOrDefault(itemId) - prevInventoryContents.GetValueOrDefault(itemId);
+                if (d != 0)
+                    tickInventoryDelta[itemId] = d;
             }
         }
 
@@ -553,9 +584,73 @@ public sealed class HousingMonitor : IDisposable
         haveStorageBaseline = true;
     }
 
+    /// <summary>
+    /// If exactly one real item unambiguously appeared in (or vanished from) the storeroom or
+    /// your inventory this tick, use its confirmed real name/id instead of guessing a
+    /// HousingFurniture row. "grew" picks an item that appeared (for a Removed/Stored event,
+    /// wherever it ended up); false picks one that disappeared (for a Placed event, wherever
+    /// it came from). Consumes the match so LogUnmatchedStorageTransfers doesn't also report it
+    /// as a separate direct transfer. Returns null when there's no candidate, or more than one
+    /// (genuinely ambiguous, e.g. several things changed in the same tick).
+    /// </summary>
+    private (uint itemId, string name)? TryResolveViaStorageDelta(bool grew)
+    {
+        var candidates = new HashSet<uint>();
+        foreach (var (itemId, delta) in tickStoreroomDelta)
+            if (grew ? delta > 0 : delta < 0)
+                candidates.Add(itemId);
+        foreach (var (itemId, delta) in tickInventoryDelta)
+            if (grew ? delta > 0 : delta < 0)
+                candidates.Add(itemId);
+
+        if (candidates.Count != 1)
+            return null;
+
+        uint id = 0;
+        foreach (var c in candidates) { id = c; break; }
+
+        if (tickStoreroomDelta.TryGetValue(id, out var sd) && (grew ? sd > 0 : sd < 0))
+            tickStoreroomDelta[id] = grew ? sd - 1 : sd + 1;
+        if (tickInventoryDelta.TryGetValue(id, out var vd) && (grew ? vd > 0 : vd < 0))
+            tickInventoryDelta[id] = grew ? vd - 1 : vd + 1;
+
+        return (id, NameResolver.ResolveItemName(id));
+    }
+
+    /// <summary>
+    /// Logs whatever's left in this tick's storeroom/inventory deltas as a direct Deposited or
+    /// Withdrawn transfer, after DiffAndLog has already had first claim on anything that
+    /// correlates with a furniture Placed/Removed/Stored event this same tick.
+    /// </summary>
+    private void LogUnmatchedStorageTransfers(ulong houseId, HouseLocation location)
+    {
+        foreach (var (itemId, storeDelta) in tickStoreroomDelta)
+        {
+            if (storeDelta == 0)
+                continue;
+
+            var invDelta = tickInventoryDelta.GetValueOrDefault(itemId);
+
+            // A closed loop: the same item left one place and landed in the other, same tick.
+            if (storeDelta > 0 && invDelta < 0)
+            {
+                var moved = Math.Min(storeDelta, -invDelta);
+                if (moved > 0)
+                    LogStorageTransfer(HistoryAction.Deposited, itemId, moved, houseId, location);
+            }
+            else if (storeDelta < 0 && invDelta > 0)
+            {
+                var moved = Math.Min(-storeDelta, invDelta);
+                if (moved > 0)
+                    LogStorageTransfer(HistoryAction.Withdrawn, itemId, moved, houseId, location);
+            }
+        }
+    }
+
     private void LogStorageTransfer(HistoryAction action, uint itemId, int quantity, ulong houseId, HouseLocation location)
         => AddEntry(new HistoryEntry(DateTime.Now, action, -1, itemId, NameResolver.ResolveItemName(itemId),
-            Vector3.Zero, 0f, null, 0f, 0, 0, houseId, Plugin.ClientState.TerritoryType, false, location, quantity));
+            Vector3.Zero, 0f, null, 0f, 0, 0, houseId, Plugin.ClientState.TerritoryType, false, location,
+            Quantity: quantity, IsRawItemId: true));
 
     private static unsafe Dictionary<uint, int> SnapshotItemContents(int typeMin, int typeMax)
     {

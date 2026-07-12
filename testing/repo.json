@@ -3,9 +3,9 @@
     "Author": "greenteakitkats",
     "Name": "A Room Reborn (Testing)",
     "InternalName": "ARoomReborn",
-    "AssemblyVersion": "0.16.1.0",
-    "TestingAssemblyVersion": "0.16.1.0",
-    "Description": "Experimental test build of A Room Reborn. Fixes wrong item names showing up outdoors, widens/resizes the log table, and simplifies the toolbar (always scoped to your current house, clicking a coordinate always applies). Install this only to try those out; the stable build lives in the normal repo. Type /houselog to open it.",
+    "AssemblyVersion": "0.16.2.0",
+    "TestingAssemblyVersion": "0.16.2.0",
+    "Description": "Experimental test build of A Room Reborn. Names Placed/Removed/Stored items correctly outdoors by cross-checking your storeroom and inventory contents directly, the same reliable method Deposited/Withdrawn already used, instead of guessing a HousingFurniture sheet row. Install this only to try it before it goes to the stable repo. Type /houselog to open it.",
     "ApplicableVersion": "any",
     "DalamudApiLevel": 15,
     "IsTestingExclusive": false,
@@ -16,8 +16,8 @@
       "qol",
       "furniture"
     ],
-    "DownloadLinkInstall": "https://github.com/greenteakitkats/ARoomReborn/releases/download/v0.16.1-test1/latest.zip",
-    "DownloadLinkUpdate": "https://github.com/greenteakitkats/ARoomReborn/releases/download/v0.16.1-test1/latest.zip",
-    "DownloadLinkTesting": "https://github.com/greenteakitkats/ARoomReborn/releases/download/v0.16.1-test1/latest.zip"
+    "DownloadLinkInstall": "https://github.com/greenteakitkats/ARoomReborn/releases/download/v0.16.2-test1/latest.zip",
+    "DownloadLinkUpdate": "https://github.com/greenteakitkats/ARoomReborn/releases/download/v0.16.2-test1/latest.zip",
+    "DownloadLinkTesting": "https://github.com/greenteakitkats/ARoomReborn/releases/download/v0.16.2-test1/latest.zip"
   }
 ]

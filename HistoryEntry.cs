@@ -40,4 +40,10 @@ public readonly record struct HistoryEntry(
     uint TerritoryId,
     bool WhileAway,          // true if detected on entry, i.e. changed since your last visit
     HouseLocation Location = HouseLocation.Indoor,
-    int Quantity = 1);       // Deposited/Withdrawn only: how many of the item moved
+    int Quantity = 1,        // Deposited/Withdrawn only: how many of the item moved
+    // True when FurnitureId is a real inventory item id (resolved via storeroom/inventory
+    // content diffing, or always true for Deposited/Withdrawn), false when it's a guessed
+    // HousingFurniture sheet row (the fallback for Moved/Rotated/Redyed, and for Placed/
+    // Removed/Stored when no unambiguous content-diff match was found). Determines which
+    // NameResolver method the icon lookup needs.
+    bool IsRawItemId = false);

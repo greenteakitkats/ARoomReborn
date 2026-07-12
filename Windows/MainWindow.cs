@@ -128,9 +128,11 @@ public class MainWindow : Window, IDisposable
 
                     ImGui.TableNextColumn();
                     var isStorageTransfer = e.Action is HistoryAction.Deposited or HistoryAction.Withdrawn;
-                    // Deposited/Withdrawn store a raw inventory item id in FurnitureId, not a
-                    // HousingFurniture sheet row, so they need the other name resolver.
-                    var iconId = isStorageTransfer ? NameResolver.ResolveItemIcon(e.FurnitureId) : NameResolver.ResolveIcon(e.FurnitureId);
+                    // IsRawItemId means FurnitureId is a real inventory item id (confirmed via
+                    // content diffing, always true for Deposited/Withdrawn, sometimes true for
+                    // Placed/Removed/Stored too), not a guessed HousingFurniture sheet row, so
+                    // it needs the other name resolver.
+                    var iconId = e.IsRawItemId ? NameResolver.ResolveItemIcon(e.FurnitureId) : NameResolver.ResolveIcon(e.FurnitureId);
                     if (iconId != 0)
                     {
                         var tex = Plugin.TextureProvider.GetFromGameIcon(new GameIconLookup(iconId)).GetWrapOrEmpty();
