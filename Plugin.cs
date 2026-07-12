@@ -121,17 +121,16 @@ public sealed class Plugin : IDalamudPlugin
 
     private void OnHousingAddon(AddonEvent type, AddonArgs args)
     {
-        // Guard on being indoors so dyeing gear in town doesn't pop the window open, and so
-        // opening the yard layout toolbar doesn't either — outdoor tracking is disabled, and
-        // auto-opening onto an empty/irrelevant log there is just noise.
-        if (Configuration.AutoOpenWithHousing && InHouseIndoors())
+        // Guard on being in a house (indoors or the yard) so dyeing gear in town doesn't pop
+        // the window open.
+        if (Configuration.AutoOpenWithHousing && InHouse())
             MainWindow.IsOpen = true;
     }
 
-    private static unsafe bool InHouseIndoors()
+    private static unsafe bool InHouse()
     {
         var manager = HousingManager.Instance();
-        return manager != null && manager->IsInside();
+        return manager != null && (manager->IsInside() || manager->IsOutside());
     }
 
     private void OnHousingAddonClose(AddonEvent type, AddonArgs args)

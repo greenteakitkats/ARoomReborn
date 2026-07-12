@@ -22,9 +22,9 @@ everything used to be.
 - Item icons and dye color swatches so the log is easy to skim.
 - Search, filters for each kind of change, and a quick "today" summary.
 - When you come back to a house, it shows you what changed while you were away.
-- Tracks the yard too, tagged separately from indoor furnishings.
+- Tracks both the interior and the yard, each kept as its own separate history.
 - Remembers your history between sessions.
-- Opens itself when the housing menu shows up (you can turn this off).
+- Opens itself when the housing menu shows up, indoors or out (you can turn this off).
 - Keeps separate history for each of your houses.
 
 ## Install
@@ -58,8 +58,8 @@ everything used to be.
 
 ## Good to know
 
-- Tracks furnishings both indoors and out in the yard, but not exterior fixtures
-  (roof, walls, fence, door, chimney) yet, since those work differently under the hood.
+- Tracks placed furnishings both indoors and out in the yard, but not exterior fixtures
+  (roof, walls, fence, door, chimney), since those work differently under the hood.
 - It can tell you what changed, but not who did it. The game doesn't share that
   with plugins.
 - Out of the box it only watches and never changes anything, which keeps it in line

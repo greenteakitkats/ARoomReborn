@@ -92,17 +92,6 @@ public sealed class HousingMonitor : IDisposable
     /// <summary>Whether you're currently indoors or in the yard, if standing in a house at all.</summary>
     public HouseLocation CurrentLocation => baselineLocation;
 
-    /// <summary>
-    /// Live check of whether you're standing in a yard right now, independent of the tracking
-    /// baseline (outdoor polling is disabled, so <see cref="haveBaseline"/> never reflects it).
-    /// Used only to let the UI explain itself when opened outdoors.
-    /// </summary>
-    public static unsafe bool IsCurrentlyOutside()
-    {
-        var manager = HousingManager.Instance();
-        return manager != null && manager->IsOutside();
-    }
-
     public HousingMonitor(Plugin plugin)
     {
         this.plugin = plugin;
