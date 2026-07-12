@@ -3,9 +3,9 @@
     "Author": "greenteakitkats",
     "Name": "A Room Reborn (Testing)",
     "InternalName": "ARoomReborn",
-    "AssemblyVersion": "0.15.1.0",
-    "TestingAssemblyVersion": "0.15.1.0",
-    "Description": "Experimental test build of A Room Reborn. Adds stored-vs-removed detection, one-click smart undo, and a clearer/tidier log window. Install this only to try those out; the stable build lives in the normal repo. Type /houselog to open it.",
+    "AssemblyVersion": "0.15.2.0",
+    "TestingAssemblyVersion": "0.15.2.0",
+    "Description": "Experimental test build of A Room Reborn. Adds stored-vs-removed detection, one-click smart undo, and a clearer/tidier log window. Also fixes a phantom \"Placed\" logged alongside every Removed/Stored. Install this only to try those out; the stable build lives in the normal repo. Type /houselog to open it.",
     "ApplicableVersion": "any",
     "DalamudApiLevel": 15,
     "IsTestingExclusive": false,
@@ -16,8 +16,8 @@
       "qol",
       "furniture"
     ],
-    "DownloadLinkInstall": "https://github.com/greenteakitkats/ARoomReborn/releases/download/v0.15.1-test1/latest.zip",
-    "DownloadLinkUpdate": "https://github.com/greenteakitkats/ARoomReborn/releases/download/v0.15.1-test1/latest.zip",
-    "DownloadLinkTesting": "https://github.com/greenteakitkats/ARoomReborn/releases/download/v0.15.1-test1/latest.zip"
+    "DownloadLinkInstall": "https://github.com/greenteakitkats/ARoomReborn/releases/download/v0.15.2-test1/latest.zip",
+    "DownloadLinkUpdate": "https://github.com/greenteakitkats/ARoomReborn/releases/download/v0.15.2-test1/latest.zip",
+    "DownloadLinkTesting": "https://github.com/greenteakitkats/ARoomReborn/releases/download/v0.15.2-test1/latest.zip"
   }
 ]

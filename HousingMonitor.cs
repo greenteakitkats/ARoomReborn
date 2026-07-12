@@ -377,6 +377,16 @@ public sealed class HousingMonitor : IDisposable
         Plugin.Log.Information($"[{entry.Location}] {entry.Action}{(entry.WhileAway ? " (away)" : "")}: {entry.ItemName} (#{entry.FurnitureId}) idx={entry.ObjectIndex} @ {entry.Position}");
     }
 
+    // The raw HousingFurniture.Id the game briefly writes into a slot the instant an item is
+    // removed or stored, before the slot is (sometimes) fully cleared to 0 on a later poll.
+    // Confirmed from a live log: removing "Mirific Mogshelf" logged a false Removed for it
+    // immediately followed by a false Placed of "Furnishing #196608" at position (0,0,0) in
+    // the exact same slot. 196608 is 0x30000, which is the indoor mask (0x20000) OR'd with
+    // this raw id (0x10000) — not a real HousingFurniture sheet row, since real rows never
+    // have their low 16 bits entirely zero. Same raw id regardless of indoor/outdoor, so it's
+    // checked before masking.
+    private const uint VacatedSlotId = 0x10000;
+
     private static unsafe Dictionary<int, FurnitureRecord>? BuildSnapshot(HousingFurnitureManager* furnitureManager, HouseLocation location)
     {
         var map = new Dictionary<int, FurnitureRecord>();
@@ -394,8 +404,8 @@ public sealed class HousingMonitor : IDisposable
         for (var i = 0; i < span.Length - 1; i++)
         {
             ref var f = ref span[i];
-            if (f.Id == 0)
-                continue; // empty slot
+            if (f.Id == 0 || f.Id == VacatedSlotId)
+                continue; // empty, or the game's own "just vacated" placeholder (see VacatedSlotId)
 
             var pos = new Vector3(f.Position.X, f.Position.Y, f.Position.Z);
             if (float.IsNaN(pos.X) || float.IsNaN(pos.Y) || float.IsNaN(pos.Z))
@@ -469,7 +479,7 @@ public sealed class HousingMonitor : IDisposable
         for (var i = 0; i < span.Length - 1; i++)
         {
             ref var f = ref span[i];
-            if (f.Id == 0 || ResolveRowId(f.Id, e.Location) != e.FurnitureId)
+            if (f.Id == 0 || f.Id == VacatedSlotId || ResolveRowId(f.Id, e.Location) != e.FurnitureId)
                 continue;
 
             var pos = new Vector3(f.Position.X, f.Position.Y, f.Position.Z);
@@ -531,10 +541,11 @@ public sealed class HousingMonitor : IDisposable
                     var inRange = f.Index >= 0 && f.Index < objects->ObjectCount;
                     var gobj = inRange ? objects->Objects[f.Index].Value : null;
 
+                    var vacated = f.Id == VacatedSlotId;
                     var rowId = ResolveRowId(f.Id, location.Value);
                     Plugin.Log.Information(
-                        $"[dump] slot={i} rawId={f.Id} objIdx={f.Index} obj={(gobj == null ? "null" : "ok")} " +
-                        $"rowId={rowId} name=\"{NameResolver.Resolve(rowId)}\"");
+                        $"[dump] slot={i} rawId={f.Id}{(vacated ? " (vacated placeholder)" : "")} objIdx={f.Index} " +
+                        $"obj={(gobj == null ? "null" : "ok")} rowId={rowId} name=\"{NameResolver.Resolve(rowId)}\"");
                     shown++;
                 }
             }
