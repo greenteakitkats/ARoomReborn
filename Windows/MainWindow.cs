@@ -51,7 +51,7 @@ public class MainWindow : Window, IDisposable
 
         if (HousingMonitor.IsCurrentlyOutside())
         {
-            ImGui.TextColored(NoticeColor, "Outdoor/yard tracking is currently disabled — this only tracks indoor changes for now.");
+            ImGui.TextColored(NoticeColor, "Yard tracking is experimental — items out of view may show as \"Furnishing #N (out of view)\".");
             ImGui.Separator();
         }
 

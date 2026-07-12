@@ -175,13 +175,6 @@ public sealed class HousingMonitor : IDisposable
             return;
         }
 
-        // Outdoor tracking disabled for now — focus on indoor perfection.
-        if (location == HouseLocation.Outdoor)
-        {
-            haveBaseline = false;
-            return;
-        }
-
         // GetFurnitureManager() returns whichever furniture set matches where we're standing,
         // indoor or outdoor, so the rest of the pipeline (BuildSnapshot, LayoutDiffer) is the
         // same for both. Only the saved-layout bucket and the per-entry tag differ.
@@ -259,11 +252,25 @@ public sealed class HousingMonitor : IDisposable
             // "Placed (away)". Treat empty the same as never-seen: seed silently instead.
             if (savedForLocation.TryGetValue(houseId, out var lastKnown) && lastKnown.Count > 0)
             {
-                // We've been here before, log only what's different since last visit.
-                Plugin.Log.Information($"[{location}] Diffing house {houseId:X} against last visit: saved={lastKnown.Count} current={current.Count}");
-                markAway = true;
-                try { DiffAndLog(lastKnown, current, houseId, location.Value, live: false); }
-                finally { markAway = false; }
+                // We've been here before, log only what's different since last visit — unless
+                // the diff is implausibly large. A real away-session changes dozens of items; a
+                // saved layout from a partial read (the yard often never streams in fully)
+                // diffed against a full one produces hundreds, and a flood that size evicts the
+                // genuine history out of the capped log. Reseed silently instead.
+                var awayChanges = LayoutDiffer.Diff(lastKnown, current);
+                var floodThreshold = Math.Max(20, current.Count / 3);
+                if (awayChanges.Count > floodThreshold)
+                {
+                    Plugin.Log.Warning($"[{location}] Away-diff for house {houseId:X} looks like a bad/partial read " +
+                        $"({awayChanges.Count} changes vs {current.Count} items, saved {lastKnown.Count}); reseeding silently.");
+                }
+                else
+                {
+                    Plugin.Log.Information($"[{location}] Diffing house {houseId:X} against last visit: saved={lastKnown.Count} current={current.Count}");
+                    markAway = true;
+                    try { DiffAndLog(lastKnown, current, houseId, location.Value, live: false, awayChanges); }
+                    finally { markAway = false; }
+                }
             }
             else
             {
@@ -302,7 +309,8 @@ public sealed class HousingMonitor : IDisposable
         dirty = true;
     }
 
-    private void DiffAndLog(Dictionary<int, FurnitureRecord> oldSet, Dictionary<int, FurnitureRecord> newSet, ulong houseId, HouseLocation location, bool live)
+    private void DiffAndLog(Dictionary<int, FurnitureRecord> oldSet, Dictionary<int, FurnitureRecord> newSet, ulong houseId, HouseLocation location, bool live,
+        List<LayoutChange>? precomputed = null)
     {
         // How many of this tick's removals went to the storeroom (see prevStoreroomItems). Only
         // live: the away-diff has no before/after storeroom snapshot, so those stay plain Removed.
@@ -316,7 +324,7 @@ public sealed class HousingMonitor : IDisposable
             prevStoreroomLoc = location;
         }
 
-        foreach (var change in LayoutDiffer.Diff(oldSet, newSet))
+        foreach (var change in precomputed ?? LayoutDiffer.Diff(oldSet, newSet))
         {
             switch (change.Action)
             {
@@ -410,6 +418,15 @@ public sealed class HousingMonitor : IDisposable
 
     private static uint DisplayId(FurnitureRecord r) => r.RowId;
 
+    // Outdoors, a RowId that wasn't confirmed off a live game object is a location-mask guess
+    // that can resolve to a confidently WRONG sheet name (a wall-mounted piece typed under the
+    // other mask, say). An honest unknown beats that. Indoors the guess has been reliable, and
+    // anything you're actively editing is loaded (and therefore confirmed) anyway.
+    private static string ResolveDisplayName(FurnitureRecord r, HouseLocation location)
+        => location == HouseLocation.Outdoor && !r.RowIdConfirmed
+            ? $"Furnishing #{r.Id} (out of view)"
+            : NameResolver.Resolve(r.RowId);
+
     private void LogSimple(HistoryAction action, int index, FurnitureRecord r, ulong houseId, HouseLocation location)
     {
         // A Removed/Stored item went somewhere (storeroom or inventory); a Placed item came
@@ -421,7 +438,7 @@ public sealed class HousingMonitor : IDisposable
             ? TryResolveViaStorageDelta(grew)
             : null;
         var id = resolved?.itemId ?? DisplayId(r);
-        var name = resolved?.name ?? NameResolver.Resolve(DisplayId(r));
+        var name = resolved?.name ?? ResolveDisplayName(r, location);
 
         AddEntry(new HistoryEntry(DateTime.Now, action, index, id, name,
             r.Position, r.Rotation, null, 0f, r.Stain, r.Stain, houseId, Plugin.ClientState.TerritoryType, markAway, location,
@@ -429,14 +446,14 @@ public sealed class HousingMonitor : IDisposable
     }
 
     private void LogRedyed(int index, FurnitureRecord before, FurnitureRecord now, ulong houseId, HouseLocation location)
-        => AddEntry(new HistoryEntry(DateTime.Now, HistoryAction.Redyed, index, DisplayId(now), NameResolver.Resolve(DisplayId(now)),
+        => AddEntry(new HistoryEntry(DateTime.Now, HistoryAction.Redyed, index, DisplayId(now), ResolveDisplayName(now, location),
             now.Position, now.Rotation, null, 0f, now.Stain, before.Stain, houseId, Plugin.ClientState.TerritoryType, markAway, location));
 
     private void LogMovement(HistoryAction action, int index, FurnitureRecord before, FurnitureRecord now, ulong houseId, HouseLocation location)
     {
         // Every detected move/rotate gets its own row, so the log reads as a full history
         // rather than a summary. Consecutive edits of the same item just stack up in order.
-        AddEntry(new HistoryEntry(DateTime.Now, action, index, DisplayId(now), NameResolver.Resolve(DisplayId(now)),
+        AddEntry(new HistoryEntry(DateTime.Now, action, index, DisplayId(now), ResolveDisplayName(now, location),
             now.Position, now.Rotation, before.Position, before.Rotation, now.Stain, before.Stain,
             houseId, Plugin.ClientState.TerritoryType, markAway, location));
     }
@@ -500,7 +517,8 @@ public sealed class HousingMonitor : IDisposable
             if (IsOriginPlaceholder(pos))
                 continue; // same "just vacated" placeholder, under some other raw id (see IsOriginPlaceholder)
 
-            map[i] = new FurnitureRecord(f.Id, ResolveRowId(furnitureManager, f.Id, f.Index, location), pos, f.Rotation, f.Stain);
+            var rowId = ResolveRowId(furnitureManager, f.Id, f.Index, location, out var confirmed);
+            map[i] = new FurnitureRecord(f.Id, rowId, pos, f.Rotation, f.Stain, confirmed);
         }
 
         return map;
@@ -518,16 +536,20 @@ public sealed class HousingMonitor : IDisposable
     /// resolve correctly for exactly the cases that matter most; only far-off, unloaded items
     /// fall back to the location guess.
     /// </summary>
-    private static unsafe uint ResolveRowId(HousingFurnitureManager* furnitureManager, uint rawId, int objIndex, HouseLocation location)
+    private static unsafe uint ResolveRowId(HousingFurnitureManager* furnitureManager, uint rawId, int objIndex, HouseLocation location, out bool confirmed)
     {
         var objects = &furnitureManager->ObjectManager.ObjectArray;
         if (objIndex >= 0 && objIndex < objects->ObjectCount)
         {
             var gameObject = objects->Objects[objIndex].Value;
             if (gameObject != null && gameObject->BaseId != 0)
+            {
+                confirmed = true;
                 return gameObject->BaseId;
+            }
         }
 
+        confirmed = false;
         var mask = location == HouseLocation.Outdoor ? 0x30000u : 0x20000u;
         return mask | rawId;
     }
@@ -738,7 +760,7 @@ public sealed class HousingMonitor : IDisposable
         for (var i = 0; i < span.Length - 1; i++)
         {
             ref var f = ref span[i];
-            if (f.Id == 0 || f.Id == VacatedSlotId || ResolveRowId(furnitureManager, f.Id, f.Index, e.Location) != e.FurnitureId)
+            if (f.Id == 0 || f.Id == VacatedSlotId || ResolveRowId(furnitureManager, f.Id, f.Index, e.Location, out _) != e.FurnitureId)
                 continue;
 
             var pos = new Vector3(f.Position.X, f.Position.Y, f.Position.Z);
@@ -804,7 +826,7 @@ public sealed class HousingMonitor : IDisposable
 
                     var pos = new Vector3(f.Position.X, f.Position.Y, f.Position.Z);
                     var vacated = f.Id == VacatedSlotId || IsOriginPlaceholder(pos);
-                    var rowId = ResolveRowId(furnitureManager, f.Id, f.Index, location.Value);
+                    var rowId = ResolveRowId(furnitureManager, f.Id, f.Index, location.Value, out _);
                     // Also show what the location-only guess would have said, so a mismatch
                     // here (only possible when the object IS loaded, since that's what makes
                     // rowId prefer BaseId over the guess) is visible directly in the dump.
