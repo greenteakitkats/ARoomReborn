@@ -164,6 +164,13 @@ public sealed class HousingMonitor : IDisposable
             return;
         }
 
+        // Outdoor tracking disabled for now — focus on indoor perfection.
+        if (location == HouseLocation.Outdoor)
+        {
+            haveBaseline = false;
+            return;
+        }
+
         // GetFurnitureManager() returns whichever furniture set matches where we're standing,
         // indoor or outdoor, so the rest of the pipeline (BuildSnapshot, LayoutDiffer) is the
         // same for both. Only the saved-layout bucket and the per-entry tag differ.
