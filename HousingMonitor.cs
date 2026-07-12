@@ -379,13 +379,21 @@ public sealed class HousingMonitor : IDisposable
 
     // The raw HousingFurniture.Id the game briefly writes into a slot the instant an item is
     // removed or stored, before the slot is (sometimes) fully cleared to 0 on a later poll.
-    // Confirmed from a live log: removing "Mirific Mogshelf" logged a false Removed for it
-    // immediately followed by a false Placed of "Furnishing #196608" at position (0,0,0) in
-    // the exact same slot. 196608 is 0x30000, which is the indoor mask (0x20000) OR'd with
-    // this raw id (0x10000) — not a real HousingFurniture sheet row, since real rows never
-    // have their low 16 bits entirely zero. Same raw id regardless of indoor/outdoor, so it's
-    // checked before masking.
+    // Confirmed indoors from a live log: removing "Mirific Mogshelf" logged a false Removed
+    // for it immediately followed by a false Placed of "Furnishing #196608" at position
+    // (0,0,0) in the exact same slot. 196608 is 0x30000, the indoor mask (0x20000) OR'd with
+    // this raw id (0x10000). The same phantom entry showed up outdoors too, also displaying
+    // 196608, but the outdoor mask is already 0x30000, so that number alone doesn't confirm
+    // the raw id is the same 0x10000 out there (0x30000 | anything-already-in-that-mask
+    // gives 196608 regardless). Kept as a cheap fast-path check for the confirmed indoor
+    // case; IsOriginPlaceholder below is the real safety net since it doesn't depend on
+    // guessing which raw id the game uses for "just vacated" in any given context.
     private const uint VacatedSlotId = 0x10000;
+
+    // No item a decorator actually placed sits exactly on the plot's local origin with zero
+    // rotation, indoors or in the yard, so this is a reliable "not a real item" signal
+    // regardless of what raw id the game happens to be using for a slot mid-transition.
+    private static bool IsOriginPlaceholder(Vector3 pos) => pos.LengthSquared() < LayoutDiffer.PositionEpsilon * LayoutDiffer.PositionEpsilon;
 
     private static unsafe Dictionary<int, FurnitureRecord>? BuildSnapshot(HousingFurnitureManager* furnitureManager, HouseLocation location)
     {
@@ -410,6 +418,8 @@ public sealed class HousingMonitor : IDisposable
             var pos = new Vector3(f.Position.X, f.Position.Y, f.Position.Z);
             if (float.IsNaN(pos.X) || float.IsNaN(pos.Y) || float.IsNaN(pos.Z))
                 return null; // garbage read (e.g. shifted offsets), signal a bad snapshot
+            if (IsOriginPlaceholder(pos))
+                continue; // same "just vacated" placeholder, under some other raw id (see IsOriginPlaceholder)
 
             map[i] = new FurnitureRecord(f.Id, ResolveRowId(f.Id, location), pos, f.Rotation, f.Stain);
         }
@@ -483,6 +493,8 @@ public sealed class HousingMonitor : IDisposable
                 continue;
 
             var pos = new Vector3(f.Position.X, f.Position.Y, f.Position.Z);
+            if (IsOriginPlaceholder(pos))
+                continue; // the "just vacated" placeholder, not a real item to select
             if (Vector3.Distance(pos, e.Position) > 0.05f)
                 continue; // this instance isn't sitting where the entry left it
 
@@ -541,7 +553,8 @@ public sealed class HousingMonitor : IDisposable
                     var inRange = f.Index >= 0 && f.Index < objects->ObjectCount;
                     var gobj = inRange ? objects->Objects[f.Index].Value : null;
 
-                    var vacated = f.Id == VacatedSlotId;
+                    var pos = new Vector3(f.Position.X, f.Position.Y, f.Position.Z);
+                    var vacated = f.Id == VacatedSlotId || IsOriginPlaceholder(pos);
                     var rowId = ResolveRowId(f.Id, location.Value);
                     Plugin.Log.Information(
                         $"[dump] slot={i} rawId={f.Id}{(vacated ? " (vacated placeholder)" : "")} objIdx={f.Index} " +
