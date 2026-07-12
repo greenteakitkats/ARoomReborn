@@ -16,6 +16,7 @@ public class Configuration : IPluginConfiguration
 
     public bool ShowPlaced { get; set; } = true;
     public bool ShowRemoved { get; set; } = true;
+    public bool ShowStored { get; set; } = true;
     public bool ShowMoved { get; set; } = true;
     public bool ShowDyed { get; set; } = true;
 

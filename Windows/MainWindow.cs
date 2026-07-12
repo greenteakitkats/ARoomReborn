@@ -45,27 +45,36 @@ public class MainWindow : Window, IDisposable
     {
         var cfg = plugin.Configuration;
 
+        // Row 1: what to show, plus a way to search and reset. These change often, so they're
+        // the first thing you see and touch.
         DrawFilter("Placed", cfg.ShowPlaced, v => { cfg.ShowPlaced = v; cfg.Save(); });
         ImGui.SameLine();
         DrawFilter("Removed", cfg.ShowRemoved, v => { cfg.ShowRemoved = v; cfg.Save(); });
+        ImGui.SameLine();
+        DrawFilter("Stored", cfg.ShowStored, v => { cfg.ShowStored = v; cfg.Save(); });
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Items removed straight into the housing storeroom, as opposed to sent to your inventory.");
         ImGui.SameLine();
         DrawFilter("Moved", cfg.ShowMoved, v => { cfg.ShowMoved = v; cfg.Save(); });
         ImGui.SameLine();
         DrawFilter("Dyed", cfg.ShowDyed, v => { cfg.ShowDyed = v; cfg.Save(); });
         ImGui.SameLine();
-        if (ImGui.Button("Clear"))
-            plugin.Monitor.Clear();
+        DrawFilter("New only", cfg.ShowOnlySinceLastOpen, v => { cfg.ShowOnlySinceLastOpen = v; cfg.Save(); });
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Only show changes since you last closed this window.");
 
         ImGui.SetNextItemWidth(220);
         ImGui.InputTextWithHint("##search", "Search item…", ref search, 100);
         ImGui.SameLine();
+        if (ImGui.Button("Clear log"))
+            ImGui.OpenPopup("ConfirmClear");
+        DrawClearConfirm();
+
+        // Row 2: settings you set once and forget, kept visually separate from the filters
+        // above so they don't compete for attention every time you open the window.
         DrawFilter("Auto-open", cfg.AutoOpenWithHousing, v => { cfg.AutoOpenWithHousing = v; cfg.Save(); });
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Open this window automatically when the housing menu appears.");
-        ImGui.SameLine();
-        DrawFilter("New only", cfg.ShowOnlySinceLastOpen, v => { cfg.ShowOnlySinceLastOpen = v; cfg.Save(); });
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Only show changes since you last closed this window.");
         ImGui.SameLine();
         DrawFilter("Apply mode", cfg.EnableApplyToSelected, v => { cfg.EnableApplyToSelected = v; cfg.Save(); });
         if (ImGui.IsItemHovered())
@@ -74,95 +83,128 @@ public class MainWindow : Window, IDisposable
         DrawTodaySummary();
         ImGui.Separator();
 
-        using var table = ImRaii.Table("##history", 4,
-            ImGuiTableFlags.RowBg | ImGuiTableFlags.Borders | ImGuiTableFlags.ScrollY);
-        if (!table.Success)
-            return;
-
-        ImGui.TableSetupColumn("When", ImGuiTableColumnFlags.WidthFixed, 110);
-        ImGui.TableSetupColumn("Action", ImGuiTableColumnFlags.WidthFixed, 64);
-        ImGui.TableSetupColumn("Item", ImGuiTableColumnFlags.WidthStretch);
-        ImGui.TableSetupColumn("Details", ImGuiTableColumnFlags.WidthFixed, 200);
-        ImGui.TableHeadersRow();
-
         var any = false;
-        var row = 0;
-        foreach (var e in plugin.Monitor.Entries)
+        using (var table = ImRaii.Table("##history", 4,
+            ImGuiTableFlags.RowBg | ImGuiTableFlags.Borders | ImGuiTableFlags.ScrollY))
         {
-            if (!IsVisible(e.Action, cfg))
-                continue;
-            if (search.Length > 0 && e.ItemName.IndexOf(search, StringComparison.OrdinalIgnoreCase) < 0)
-                continue;
-            if (cfg.ShowOnlySinceLastOpen && e.Time <= cfg.SeenWatermark)
-                continue;
-
-            any = true;
-            ImGui.TableNextRow();
-
-            ImGui.TableNextColumn();
-            ImGui.Text(FormatWhen(e.Time));
-
-            ImGui.TableNextColumn();
-            DrawAction(e.Action);
-
-            ImGui.TableNextColumn();
-            var iconId = NameResolver.ResolveIcon(e.FurnitureId);
-            if (iconId != 0)
+            if (table.Success)
             {
-                var tex = Plugin.TextureProvider.GetFromGameIcon(new GameIconLookup(iconId)).GetWrapOrEmpty();
-                ImGui.Image(tex.Handle, new Vector2(20, 20));
-                ImGui.SameLine();
-            }
-            ImGui.Text(e.ItemName);
-            if (e.Location == HouseLocation.Outdoor)
-            {
-                ImGui.SameLine();
-                ImGui.TextDisabled("(yard)");
-                if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip("This was outside in the yard, not indoors.");
-            }
-            if (e.WhileAway)
-            {
-                ImGui.SameLine();
-                ImGui.TextDisabled("(away)");
-                if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip("This changed while you were away. Spotted when you walked back in.");
-            }
+                ImGui.TableSetupColumn("When", ImGuiTableColumnFlags.WidthFixed, 110);
+                ImGui.TableSetupColumn("Action", ImGuiTableColumnFlags.WidthFixed, 64);
+                ImGui.TableSetupColumn("Item", ImGuiTableColumnFlags.WidthStretch);
+                ImGui.TableSetupColumn("Details", ImGuiTableColumnFlags.WidthFixed, 200);
+                ImGui.TableHeadersRow();
 
-            ImGui.TableNextColumn();
-            var isMove = e.Action is HistoryAction.Moved or HistoryAction.Rotated;
-            if (e.Action == HistoryAction.Redyed)
-            {
-                DrawDyeSwatch(e.FromStain, row * 2);
-                ImGui.SameLine();
-                ImGui.TextDisabled(NameResolver.ResolveStain(e.FromStain));
-                ImGui.SameLine();
-                ImGui.Text("→");
-                ImGui.SameLine();
-                DrawDyeSwatch(e.Stain, row * 2 + 1);
-                ImGui.SameLine();
-                ImGui.Text(NameResolver.ResolveStain(e.Stain));
-            }
-            else if (isMove && e.FromPosition is { } from)
-            {
-                // Old (greyed) then new. Click either to copy "X Y Z", the old line is the undo value.
-                CopyableCoord(Format(from, e.FromRotation), from, true, row * 2);
-                CopyableCoord("→ " + Format(e.Position, e.Rotation), e.Position, false, row * 2 + 1);
-                DrawUndoButton(e, from, e.FromRotation, row);
-            }
-            else
-            {
-                CopyableCoord(Format(e.Position, e.Rotation), e.Position, false, row * 2);
-            }
+                var row = 0;
+                foreach (var e in plugin.Monitor.Entries)
+                {
+                    if (!IsVisible(e.Action, cfg))
+                        continue;
+                    if (search.Length > 0 && e.ItemName.IndexOf(search, StringComparison.OrdinalIgnoreCase) < 0)
+                        continue;
+                    if (cfg.ShowOnlySinceLastOpen && e.Time <= cfg.SeenWatermark)
+                        continue;
 
-            row++;
+                    any = true;
+                    ImGui.TableNextRow();
+
+                    ImGui.TableNextColumn();
+                    ImGui.Text(FormatWhen(e.Time));
+
+                    ImGui.TableNextColumn();
+                    DrawAction(e.Action);
+
+                    ImGui.TableNextColumn();
+                    var iconId = NameResolver.ResolveIcon(e.FurnitureId);
+                    if (iconId != 0)
+                    {
+                        var tex = Plugin.TextureProvider.GetFromGameIcon(new GameIconLookup(iconId)).GetWrapOrEmpty();
+                        ImGui.Image(tex.Handle, new Vector2(20, 20));
+                        ImGui.SameLine();
+                    }
+                    ImGui.Text(e.ItemName);
+                    if (e.Location == HouseLocation.Outdoor)
+                    {
+                        ImGui.SameLine();
+                        ImGui.TextDisabled("(yard)");
+                        if (ImGui.IsItemHovered())
+                            ImGui.SetTooltip("This was outside in the yard, not indoors.");
+                    }
+                    if (e.WhileAway)
+                    {
+                        ImGui.SameLine();
+                        ImGui.TextDisabled("(away)");
+                        if (ImGui.IsItemHovered())
+                            ImGui.SetTooltip("This changed while you were away. Spotted when you walked back in.");
+                    }
+
+                    ImGui.TableNextColumn();
+                    var isMove = e.Action is HistoryAction.Moved or HistoryAction.Rotated;
+                    if (e.Action == HistoryAction.Redyed)
+                    {
+                        DrawDyeSwatch(e.FromStain, row * 2);
+                        ImGui.SameLine();
+                        ImGui.TextDisabled(NameResolver.ResolveStain(e.FromStain));
+                        ImGui.SameLine();
+                        ImGui.Text("→");
+                        ImGui.SameLine();
+                        DrawDyeSwatch(e.Stain, row * 2 + 1);
+                        ImGui.SameLine();
+                        ImGui.Text(NameResolver.ResolveStain(e.Stain));
+                    }
+                    else if (isMove && e.FromPosition is { } from)
+                    {
+                        // Old (greyed) then new. Click either to copy "X Y Z", the old line is the undo value.
+                        CopyableCoord(Format(from, e.FromRotation), from, true, row * 2);
+                        CopyableCoord("→ " + Format(e.Position, e.Rotation), e.Position, false, row * 2 + 1);
+                        DrawUndoButton(e, from, e.FromRotation, row);
+                    }
+                    else
+                    {
+                        CopyableCoord(Format(e.Position, e.Rotation), e.Position, false, row * 2);
+                    }
+
+                    row++;
+                }
+            }
         }
 
+        // Drawn below the table, not inside a table cell, so the message isn't clipped to a
+        // single column's width. Also says *why* the log looks empty when it isn't really
+        // empty (a filter or "New only" is hiding real entries), since that's confusing
+        // otherwise: the summary line above can say "500 placed" while the table shows nothing.
         if (!any)
+            DrawEmptyState(cfg);
+    }
+
+    private void DrawEmptyState(Configuration cfg)
+    {
+        ImGui.Spacing();
+        var total = plugin.Monitor.Entries.Count;
+
+        if (total == 0)
         {
-            ImGui.TableNextRow();
-            ImGui.TableNextColumn();
-            ImGui.TextDisabled("No changes logged yet.");
+            ImGui.TextDisabled("Nothing logged yet.");
+            ImGui.TextDisabled("Place, move, or dye something in housing layout mode to get started.");
+            return;
+        }
+
+        if (search.Length > 0)
+        {
+            ImGui.TextDisabled($"No items match \"{search}\".");
+            return;
+        }
+
+        var reason = cfg.ShowOnlySinceLastOpen
+            ? "hidden because \"New only\" is on"
+            : "hidden by your action filters";
+        ImGui.TextDisabled($"{total} change{(total == 1 ? "" : "s")} logged, but {reason}.");
+        ImGui.SameLine();
+        if (ImGui.SmallButton("Show everything"))
+        {
+            cfg.ShowPlaced = cfg.ShowRemoved = cfg.ShowStored = cfg.ShowMoved = cfg.ShowDyed = true;
+            cfg.ShowOnlySinceLastOpen = false;
+            cfg.Save();
         }
     }
 
@@ -170,13 +212,33 @@ public class MainWindow : Window, IDisposable
     {
         HistoryAction.Placed => cfg.ShowPlaced,
         HistoryAction.Removed => cfg.ShowRemoved,
-        HistoryAction.Stored => cfg.ShowRemoved, // stored items ride along with the Removed filter
-
+        HistoryAction.Stored => cfg.ShowStored,
         HistoryAction.Moved => cfg.ShowMoved,
         HistoryAction.Rotated => cfg.ShowMoved, // rotations share the "Moved" filter
         HistoryAction.Redyed => cfg.ShowDyed,
         _ => true,
     };
+
+    // "Clear log" wipes history with no undo, so it gets a confirm step instead of firing on
+    // the first click, the same way it sits right next to filter checkboxes people click a lot.
+    private void DrawClearConfirm()
+    {
+        if (!ImGui.BeginPopup("ConfirmClear"))
+            return;
+
+        ImGui.Text("Clear the whole log? This can't be undone.");
+        ImGui.Spacing();
+        if (ImGui.Button("Clear it"))
+        {
+            plugin.Monitor.Clear();
+            ImGui.CloseCurrentPopup();
+        }
+        ImGui.SameLine();
+        if (ImGui.Button("Cancel"))
+            ImGui.CloseCurrentPopup();
+
+        ImGui.EndPopup();
+    }
 
     private static void DrawAction(HistoryAction a)
     {
