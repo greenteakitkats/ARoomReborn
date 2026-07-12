@@ -442,20 +442,34 @@ public sealed class HousingMonitor : IDisposable
             if (IsOriginPlaceholder(pos))
                 continue; // same "just vacated" placeholder, under some other raw id (see IsOriginPlaceholder)
 
-            map[i] = new FurnitureRecord(f.Id, ResolveRowId(f.Id, location), pos, f.Rotation, f.Stain);
+            map[i] = new FurnitureRecord(f.Id, ResolveRowId(furnitureManager, f.Id, f.Index, location), pos, f.Rotation, f.Stain);
         }
 
         return map;
     }
 
     /// <summary>
-    /// The HousingFurniture sheet row for a placed object. Per FFXIVClientStructs'
-    /// HousingFurniture.Id docs, the row is (0x20000 | Id) indoors and (0x30000 | Id)
-    /// outdoors, so this needs nothing from the item's game object (which may not even
-    /// exist yet if it hasn't streamed in), just which side of the door we're standing on.
+    /// The HousingFurniture sheet row for a placed object. Prefers reading it straight off the
+    /// live game object's BaseId (per ReMakePlace), the same field indoor resolution relied on
+    /// for months with zero wrong-name reports, only ever "unresolved" ones. Falls back to
+    /// guessing the row from (0x20000|Id) indoors / (0x30000|Id) outdoors when the object isn't
+    /// loaded, which is usually right but not guaranteed for every furniture category (a wall
+    /// piece placed outdoors can be typed differently under the hood than a free-standing yard
+    /// object, so the two masks can each be wrong for the other's category). An item you're
+    /// actively watching move/store/remove is by definition rendered right now, so this should
+    /// resolve correctly for exactly the cases that matter most; only far-off, unloaded items
+    /// fall back to the location guess.
     /// </summary>
-    private static uint ResolveRowId(uint rawId, HouseLocation location)
+    private static unsafe uint ResolveRowId(HousingFurnitureManager* furnitureManager, uint rawId, int objIndex, HouseLocation location)
     {
+        var objects = &furnitureManager->ObjectManager.ObjectArray;
+        if (objIndex >= 0 && objIndex < objects->ObjectCount)
+        {
+            var gameObject = objects->Objects[objIndex].Value;
+            if (gameObject != null && gameObject->BaseId != 0)
+                return gameObject->BaseId;
+        }
+
         var mask = location == HouseLocation.Outdoor ? 0x30000u : 0x20000u;
         return mask | rawId;
     }
@@ -602,7 +616,7 @@ public sealed class HousingMonitor : IDisposable
         for (var i = 0; i < span.Length - 1; i++)
         {
             ref var f = ref span[i];
-            if (f.Id == 0 || f.Id == VacatedSlotId || ResolveRowId(f.Id, e.Location) != e.FurnitureId)
+            if (f.Id == 0 || f.Id == VacatedSlotId || ResolveRowId(furnitureManager, f.Id, f.Index, e.Location) != e.FurnitureId)
                 continue;
 
             var pos = new Vector3(f.Position.X, f.Position.Y, f.Position.Z);
@@ -668,10 +682,16 @@ public sealed class HousingMonitor : IDisposable
 
                     var pos = new Vector3(f.Position.X, f.Position.Y, f.Position.Z);
                     var vacated = f.Id == VacatedSlotId || IsOriginPlaceholder(pos);
-                    var rowId = ResolveRowId(f.Id, location.Value);
+                    var rowId = ResolveRowId(furnitureManager, f.Id, f.Index, location.Value);
+                    // Also show what the location-only guess would have said, so a mismatch
+                    // here (only possible when the object IS loaded, since that's what makes
+                    // rowId prefer BaseId over the guess) is visible directly in the dump.
+                    var guessMask = location.Value == HouseLocation.Outdoor ? 0x30000u : 0x20000u;
+                    var guessRowId = guessMask | f.Id;
+                    var guessNote = guessRowId != rowId ? $" (location guess would say \"{NameResolver.Resolve(guessRowId)}\")" : "";
                     Plugin.Log.Information(
                         $"[dump] slot={i} rawId={f.Id}{(vacated ? " (vacated placeholder)" : "")} objIdx={f.Index} " +
-                        $"obj={(gobj == null ? "null" : "ok")} rowId={rowId} name=\"{NameResolver.Resolve(rowId)}\"");
+                        $"obj={(gobj == null ? "null" : "ok")} rowId={rowId} name=\"{NameResolver.Resolve(rowId)}\"{guessNote}");
                     shown++;
                 }
             }

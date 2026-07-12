@@ -19,9 +19,6 @@ public class MainWindow : Window, IDisposable
     private static readonly Vector4 DepositedColor = new(0.50f, 0.78f, 0.65f, 1f);
     private static readonly Vector4 WithdrawnColor = new(0.78f, 0.65f, 0.45f, 1f);
 
-    private static readonly string[] HouseScopeLabels = { "This house", "All houses" };
-    private static readonly string[] LocationScopeLabels = { "Indoor + yard", "Indoor only", "Yard only" };
-
     private readonly Plugin plugin;
     private string search = string.Empty;
 
@@ -30,7 +27,7 @@ public class MainWindow : Window, IDisposable
     {
         SizeConstraints = new WindowSizeConstraints
         {
-            MinimumSize = new Vector2(560, 320),
+            MinimumSize = new Vector2(680, 320),
             MaximumSize = new Vector2(float.MaxValue, float.MaxValue),
         };
 
@@ -79,55 +76,33 @@ public class MainWindow : Window, IDisposable
             ImGui.OpenPopup("ConfirmClear");
         DrawClearConfirm();
 
-        // Row 1.5: which house and which side of the door. Every house keeps its own history
-        // by default, so switching plots doesn't dump you into one giant mixed log, "All
-        // houses" is there for whenever you actually want the full picture.
-        var effectiveHouseId = plugin.Monitor.CurrentHouseId
-            ?? (plugin.Monitor.Entries.Count > 0 ? plugin.Monitor.Entries[0].HouseId : (ulong?)null);
-
-        ImGui.SetNextItemWidth(120);
-        var houseIdx = (int)cfg.HouseFilter;
-        if (ImGui.Combo("##housescope", ref houseIdx, HouseScopeLabels, HouseScopeLabels.Length))
-        {
-            cfg.HouseFilter = (HouseScope)houseIdx;
-            cfg.Save();
-        }
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip(effectiveHouseId is { } hid
-                ? $"\"This house\" follows wherever you're currently in or last visited (house {hid:X})."
-                : "\"This house\" has nothing to scope to yet, visit a house first.");
-        ImGui.SameLine();
-        ImGui.SetNextItemWidth(110);
-        var locIdx = (int)cfg.LocationFilter;
-        if (ImGui.Combo("##locationscope", ref locIdx, LocationScopeLabels, LocationScopeLabels.Length))
-        {
-            cfg.LocationFilter = (LocationScope)locIdx;
-            cfg.Save();
-        }
-
         // Row 2: settings you set once and forget, kept visually separate from the filters
-        // above so they don't compete for attention every time you open the window.
+        // above so they don't compete for attention every time you open the window. Just one
+        // now: clicking a coordinate always moves the selected item (Undo already covers
+        // recovering from a mistake, so there's no separate "safe" mode to opt out of).
         DrawFilter("Auto-open", cfg.AutoOpenWithHousing, v => { cfg.AutoOpenWithHousing = v; cfg.Save(); });
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Open this window automatically when the housing menu appears.");
-        ImGui.SameLine();
-        DrawFilter("Apply mode", cfg.EnableApplyToSelected, v => { cfg.EnableApplyToSelected = v; cfg.Save(); });
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("When on, clicking a coordinate MOVES the item selected in housing layout mode there (writes to the game, like BDTH). Off = copy to clipboard.");
 
         DrawTodaySummary();
         ImGui.Separator();
 
+        // Always scoped to the house you're currently in (or last visited, if you're not in
+        // one right now), so each house's log naturally stays separate from the others. Indoor
+        // and yard entries share one list, already told apart by the "(yard)" tag per row.
+        var effectiveHouseId = plugin.Monitor.CurrentHouseId
+            ?? (plugin.Monitor.Entries.Count > 0 ? plugin.Monitor.Entries[0].HouseId : (ulong?)null);
+
         var any = false;
         using (var table = ImRaii.Table("##history", 4,
-            ImGuiTableFlags.RowBg | ImGuiTableFlags.Borders | ImGuiTableFlags.ScrollY))
+            ImGuiTableFlags.RowBg | ImGuiTableFlags.Borders | ImGuiTableFlags.ScrollY | ImGuiTableFlags.Resizable))
         {
             if (table.Success)
             {
                 ImGui.TableSetupColumn("When", ImGuiTableColumnFlags.WidthFixed, 110);
-                ImGui.TableSetupColumn("Action", ImGuiTableColumnFlags.WidthFixed, 64);
-                ImGui.TableSetupColumn("Item", ImGuiTableColumnFlags.WidthStretch);
-                ImGui.TableSetupColumn("Details", ImGuiTableColumnFlags.WidthFixed, 200);
+                ImGui.TableSetupColumn("Action", ImGuiTableColumnFlags.WidthFixed, 74);
+                ImGui.TableSetupColumn("Item", ImGuiTableColumnFlags.WidthStretch, 1.0f);
+                ImGui.TableSetupColumn("Details", ImGuiTableColumnFlags.WidthStretch, 1.3f);
                 ImGui.TableHeadersRow();
 
                 var row = 0;
@@ -139,11 +114,7 @@ public class MainWindow : Window, IDisposable
                         continue;
                     if (cfg.ShowOnlySinceLastOpen && e.Time <= cfg.SeenWatermark)
                         continue;
-                    if (cfg.HouseFilter == HouseScope.ThisHouse && effectiveHouseId is { } scopedHouse && e.HouseId != scopedHouse)
-                        continue;
-                    if (cfg.LocationFilter == LocationScope.IndoorOnly && e.Location != HouseLocation.Indoor)
-                        continue;
-                    if (cfg.LocationFilter == LocationScope.OutdoorOnly && e.Location != HouseLocation.Outdoor)
+                    if (effectiveHouseId is { } scopedHouse && e.HouseId != scopedHouse)
                         continue;
 
                     any = true;
@@ -247,17 +218,13 @@ public class MainWindow : Window, IDisposable
         }
 
         var reason = cfg.ShowOnlySinceLastOpen ? "hidden because \"New only\" is on"
-            : cfg.HouseFilter == HouseScope.ThisHouse ? "hidden because you're scoped to \"This house\""
-            : cfg.LocationFilter != LocationScope.Both ? "hidden by your indoor/yard filter"
-            : "hidden by your action filters";
+            : "hidden by your action filters, or belong to a different house";
         ImGui.TextDisabled($"{total} change{(total == 1 ? "" : "s")} logged, but {reason}.");
         ImGui.SameLine();
         if (ImGui.SmallButton("Show everything"))
         {
             cfg.ShowPlaced = cfg.ShowRemoved = cfg.ShowStored = cfg.ShowMoved = cfg.ShowDyed = cfg.ShowStorageTransfers = true;
             cfg.ShowOnlySinceLastOpen = false;
-            cfg.HouseFilter = HouseScope.AllHouses;
-            cfg.LocationFilter = LocationScope.Both;
             cfg.Save();
         }
     }
@@ -321,24 +288,16 @@ public class MainWindow : Window, IDisposable
         if (muted)
             ImGui.PopStyleColor();
 
-        var applyMode = plugin.Configuration.EnableApplyToSelected;
+        // Clicking always moves the item selected in housing layout mode there, matching BDTH.
+        // No-op (and the tooltip says why) if nothing's selected, so there's nothing to opt out
+        // of, either it does something useful or it quietly does nothing.
         if (clicked)
-        {
-            if (applyMode)
-                HousingWriter.TryApplyPosition(pos);
-            else
-                ImGui.SetClipboardText($"{pos.X:0.000} {pos.Y:0.000} {pos.Z:0.000}");
-        }
+            HousingWriter.TryApplyPosition(pos);
 
         if (ImGui.IsItemHovered())
-        {
-            if (applyMode)
-                ImGui.SetTooltip(HousingWriter.CanApply()
-                    ? "Click to move the selected item here."
-                    : "Apply mode: select an item in housing layout mode first.");
-            else
-                ImGui.SetTooltip("Click to copy X Y Z to clipboard.");
-        }
+            ImGui.SetTooltip(HousingWriter.CanApply()
+                ? "Click to move the selected item here."
+                : "Select an item in housing layout mode first, then click to move it here.");
     }
 
     private void DrawUndoButton(HistoryEntry e, Vector3 from, float fromRotation, int row)
