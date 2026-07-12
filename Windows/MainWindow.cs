@@ -43,9 +43,17 @@ public class MainWindow : Window, IDisposable
         plugin.Configuration.Save();
     }
 
+    private static readonly Vector4 NoticeColor = new(0.90f, 0.75f, 0.35f, 1f);
+
     public override void Draw()
     {
         var cfg = plugin.Configuration;
+
+        if (HousingMonitor.IsCurrentlyOutside())
+        {
+            ImGui.TextColored(NoticeColor, "Outdoor/yard tracking is currently disabled — this only tracks indoor changes for now.");
+            ImGui.Separator();
+        }
 
         // Row 1: what to show, plus a way to search and reset. These change often, so they're
         // the first thing you see and touch.

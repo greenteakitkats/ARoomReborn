@@ -92,6 +92,17 @@ public sealed class HousingMonitor : IDisposable
     /// <summary>Whether you're currently indoors or in the yard, if standing in a house at all.</summary>
     public HouseLocation CurrentLocation => baselineLocation;
 
+    /// <summary>
+    /// Live check of whether you're standing in a yard right now, independent of the tracking
+    /// baseline (outdoor polling is disabled, so <see cref="haveBaseline"/> never reflects it).
+    /// Used only to let the UI explain itself when opened outdoors.
+    /// </summary>
+    public static unsafe bool IsCurrentlyOutside()
+    {
+        var manager = HousingManager.Instance();
+        return manager != null && manager->IsOutside();
+    }
+
     public HousingMonitor(Plugin plugin)
     {
         this.plugin = plugin;
@@ -242,16 +253,22 @@ public sealed class HousingMonitor : IDisposable
                 return;
 
             var savedForLocation = SavedLayoutsFor(location.Value);
-            if (savedForLocation.TryGetValue(houseId, out var lastKnown))
+            // An empty saved layout is indistinguishable from one that never got a clean read
+            // (e.g. a prior visit that got interrupted before settling), and diffing a real,
+            // furnished room against zero saved items floods the log with every item read as
+            // "Placed (away)". Treat empty the same as never-seen: seed silently instead.
+            if (savedForLocation.TryGetValue(houseId, out var lastKnown) && lastKnown.Count > 0)
             {
                 // We've been here before, log only what's different since last visit.
+                Plugin.Log.Information($"[{location}] Diffing house {houseId:X} against last visit: saved={lastKnown.Count} current={current.Count}");
                 markAway = true;
                 try { DiffAndLog(lastKnown, current, houseId, location.Value, live: false); }
                 finally { markAway = false; }
             }
             else
             {
-                // First time we've ever seen this house/location, seed silently.
+                // First time we've ever seen this house/location (or the saved layout was
+                // empty/stale), seed silently.
                 Plugin.Log.Information($"First visit ({location}) to house {houseId:X}: {current.Count} item(s).");
             }
 
