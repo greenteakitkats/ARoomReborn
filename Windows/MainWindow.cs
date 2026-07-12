@@ -87,11 +87,14 @@ public class MainWindow : Window, IDisposable
         DrawTodaySummary();
         ImGui.Separator();
 
-        // Always scoped to the house you're currently in (or last visited, if you're not in
-        // one right now), so each house's log naturally stays separate from the others. Indoor
-        // and yard entries share one list, already told apart by the "(yard)" tag per row.
+        // Always scoped to the house AND location (indoor/yard) you're currently in (or last
+        // visited, if you're not in one right now), so indoor and outdoor histories read as
+        // fully separate logs, never mixed on the same screen.
         var effectiveHouseId = plugin.Monitor.CurrentHouseId
             ?? (plugin.Monitor.Entries.Count > 0 ? plugin.Monitor.Entries[0].HouseId : (ulong?)null);
+        var effectiveLocation = plugin.Monitor.CurrentHouseId != null
+            ? plugin.Monitor.CurrentLocation
+            : (plugin.Monitor.Entries.Count > 0 ? plugin.Monitor.Entries[0].Location : (HouseLocation?)null);
 
         var any = false;
         using (var table = ImRaii.Table("##history", 4,
@@ -115,6 +118,8 @@ public class MainWindow : Window, IDisposable
                     if (cfg.ShowOnlySinceLastOpen && e.Time <= cfg.SeenWatermark)
                         continue;
                     if (effectiveHouseId is { } scopedHouse && e.HouseId != scopedHouse)
+                        continue;
+                    if (effectiveLocation is { } scopedLocation && e.Location != scopedLocation)
                         continue;
 
                     any = true;
@@ -140,13 +145,6 @@ public class MainWindow : Window, IDisposable
                         ImGui.SameLine();
                     }
                     ImGui.Text(e.ItemName);
-                    if (e.Location == HouseLocation.Outdoor)
-                    {
-                        ImGui.SameLine();
-                        ImGui.TextDisabled("(yard)");
-                        if (ImGui.IsItemHovered())
-                            ImGui.SetTooltip("This was outside in the yard, not indoors.");
-                    }
                     if (e.WhileAway)
                     {
                         ImGui.SameLine();
@@ -220,7 +218,7 @@ public class MainWindow : Window, IDisposable
         }
 
         var reason = cfg.ShowOnlySinceLastOpen ? "hidden because \"New only\" is on"
-            : "hidden by your action filters, or belong to a different house";
+            : "hidden by your action filters, or belong to a different house or location (indoor/yard)";
         ImGui.TextDisabled($"{total} change{(total == 1 ? "" : "s")} logged, but {reason}.");
         ImGui.SameLine();
         if (ImGui.SmallButton("Show everything"))

@@ -89,6 +89,9 @@ public sealed class HousingMonitor : IDisposable
     /// <summary>The house you're currently standing in (indoors or its yard), if any.</summary>
     public ulong? CurrentHouseId => haveBaseline ? baselineHouseId : null;
 
+    /// <summary>Whether you're currently indoors or in the yard, if standing in a house at all.</summary>
+    public HouseLocation CurrentLocation => baselineLocation;
+
     public HousingMonitor(Plugin plugin)
     {
         this.plugin = plugin;
