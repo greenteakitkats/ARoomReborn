@@ -20,6 +20,8 @@ public static class NameResolver
     private static readonly Dictionary<uint, uint> IconCache = new();
     private static readonly Dictionary<byte, string> StainCache = new();
     private static readonly Dictionary<byte, Vector4> StainColorCache = new();
+    private static readonly Dictionary<uint, string> ItemNameCache = new();
+    private static readonly Dictionary<uint, uint> ItemIconCache = new();
 
     /// <summary>Game icon id for a furnishing (0 if unknown).</summary>
     public static uint ResolveIcon(uint furnitureId)
@@ -72,6 +74,39 @@ public static class NameResolver
 
         StainCache[stainId] = name;
         return name;
+    }
+
+    /// <summary>
+    /// Name for a raw inventory item id (not a HousingFurniture sheet row), used for
+    /// storeroom/inventory transfers that never touch the room layout at all.
+    /// </summary>
+    public static string ResolveItemName(uint itemId)
+    {
+        if (ItemNameCache.TryGetValue(itemId, out var cached))
+            return cached;
+
+        var sheet = Plugin.DataManager.GetExcelSheet<Item>();
+        var name = sheet.TryGetRow(itemId, out var row) && !string.IsNullOrWhiteSpace(row.Name.ToString())
+            ? row.Name.ToString()
+            : $"Item #{itemId}";
+
+        ItemNameCache[itemId] = name;
+        return name;
+    }
+
+    /// <summary>Game icon id for a raw inventory item (0 if unknown).</summary>
+    public static uint ResolveItemIcon(uint itemId)
+    {
+        if (ItemIconCache.TryGetValue(itemId, out var cached))
+            return cached;
+
+        uint icon = 0;
+        var sheet = Plugin.DataManager.GetExcelSheet<Item>();
+        if (sheet.TryGetRow(itemId, out var row))
+            icon = row.Icon;
+
+        ItemIconCache[itemId] = icon;
+        return icon;
     }
 
     public static string Resolve(uint furnitureId)

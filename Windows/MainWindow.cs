@@ -16,6 +16,8 @@ public class MainWindow : Window, IDisposable
     private static readonly Vector4 MovedColor = new(0.45f, 0.70f, 0.95f, 1f);
     private static readonly Vector4 RotatedColor = new(0.90f, 0.75f, 0.35f, 1f);
     private static readonly Vector4 DyedColor = new(0.82f, 0.58f, 0.88f, 1f);
+    private static readonly Vector4 DepositedColor = new(0.50f, 0.78f, 0.65f, 1f);
+    private static readonly Vector4 WithdrawnColor = new(0.78f, 0.65f, 0.45f, 1f);
 
     private static readonly string[] HouseScopeLabels = { "This house", "All houses" };
     private static readonly string[] LocationScopeLabels = { "Indoor + yard", "Indoor only", "Yard only" };
@@ -61,6 +63,10 @@ public class MainWindow : Window, IDisposable
         DrawFilter("Moved", cfg.ShowMoved, v => { cfg.ShowMoved = v; cfg.Save(); });
         ImGui.SameLine();
         DrawFilter("Dyed", cfg.ShowDyed, v => { cfg.ShowDyed = v; cfg.Save(); });
+        ImGui.SameLine();
+        DrawFilter("Storage", cfg.ShowStorageTransfers, v => { cfg.ShowStorageTransfers = v; cfg.Save(); });
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Items moved directly between your inventory and the storeroom, never placed in the room at all.");
         ImGui.SameLine();
         DrawFilter("New only", cfg.ShowOnlySinceLastOpen, v => { cfg.ShowOnlySinceLastOpen = v; cfg.Save(); });
         if (ImGui.IsItemHovered())
@@ -150,7 +156,10 @@ public class MainWindow : Window, IDisposable
                     DrawAction(e.Action);
 
                     ImGui.TableNextColumn();
-                    var iconId = NameResolver.ResolveIcon(e.FurnitureId);
+                    var isStorageTransfer = e.Action is HistoryAction.Deposited or HistoryAction.Withdrawn;
+                    // Deposited/Withdrawn store a raw inventory item id in FurnitureId, not a
+                    // HousingFurniture sheet row, so they need the other name resolver.
+                    var iconId = isStorageTransfer ? NameResolver.ResolveItemIcon(e.FurnitureId) : NameResolver.ResolveIcon(e.FurnitureId);
                     if (iconId != 0)
                     {
                         var tex = Plugin.TextureProvider.GetFromGameIcon(new GameIconLookup(iconId)).GetWrapOrEmpty();
@@ -193,6 +202,13 @@ public class MainWindow : Window, IDisposable
                         CopyableCoord(Format(from, e.FromRotation), from, true, row * 2);
                         CopyableCoord("→ " + Format(e.Position, e.Rotation), e.Position, false, row * 2 + 1);
                         DrawUndoButton(e, from, e.FromRotation, row);
+                    }
+                    else if (isStorageTransfer)
+                    {
+                        // No coordinates for these, they never touched the room. Only worth
+                        // calling out the quantity when it's more than one of the item.
+                        var direction = e.Action == HistoryAction.Deposited ? "from your inventory" : "to your inventory";
+                        ImGui.TextDisabled(e.Quantity > 1 ? $"×{e.Quantity} {direction}" : direction);
                     }
                     else
                     {
@@ -238,7 +254,7 @@ public class MainWindow : Window, IDisposable
         ImGui.SameLine();
         if (ImGui.SmallButton("Show everything"))
         {
-            cfg.ShowPlaced = cfg.ShowRemoved = cfg.ShowStored = cfg.ShowMoved = cfg.ShowDyed = true;
+            cfg.ShowPlaced = cfg.ShowRemoved = cfg.ShowStored = cfg.ShowMoved = cfg.ShowDyed = cfg.ShowStorageTransfers = true;
             cfg.ShowOnlySinceLastOpen = false;
             cfg.HouseFilter = HouseScope.AllHouses;
             cfg.LocationFilter = LocationScope.Both;
@@ -254,6 +270,8 @@ public class MainWindow : Window, IDisposable
         HistoryAction.Moved => cfg.ShowMoved,
         HistoryAction.Rotated => cfg.ShowMoved, // rotations share the "Moved" filter
         HistoryAction.Redyed => cfg.ShowDyed,
+        HistoryAction.Deposited => cfg.ShowStorageTransfers,
+        HistoryAction.Withdrawn => cfg.ShowStorageTransfers,
         _ => true,
     };
 
@@ -288,6 +306,8 @@ public class MainWindow : Window, IDisposable
             case HistoryAction.Moved: ImGui.TextColored(MovedColor, "Moved"); break;
             case HistoryAction.Rotated: ImGui.TextColored(RotatedColor, "Rotated"); break;
             case HistoryAction.Redyed: ImGui.TextColored(DyedColor, "Dyed"); break;
+            case HistoryAction.Deposited: ImGui.TextColored(DepositedColor, "Deposited"); break;
+            case HistoryAction.Withdrawn: ImGui.TextColored(WithdrawnColor, "Withdrawn"); break;
         }
     }
 
@@ -345,7 +365,7 @@ public class MainWindow : Window, IDisposable
 
     private void DrawTodaySummary()
     {
-        int placed = 0, removed = 0, stored = 0, moved = 0, dyed = 0;
+        int placed = 0, removed = 0, stored = 0, moved = 0, dyed = 0, storageTransfers = 0;
         var today = DateTime.Now.Date;
         foreach (var e in plugin.Monitor.Entries)
         {
@@ -359,12 +379,15 @@ public class MainWindow : Window, IDisposable
                 case HistoryAction.Moved:
                 case HistoryAction.Rotated: moved++; break;
                 case HistoryAction.Redyed: dyed++; break;
+                case HistoryAction.Deposited:
+                case HistoryAction.Withdrawn: storageTransfers++; break;
             }
         }
 
-        // Only show the "stored" tally once there's something to show, to keep the line short.
+        // Only show tallies once there's something to show, to keep the line short on a normal day.
         var storedPart = stored > 0 ? $" · {stored} stored" : "";
-        ImGui.TextDisabled($"Today: {placed} placed · {removed} removed{storedPart} · {moved} moved · {dyed} dyed");
+        var storagePart = storageTransfers > 0 ? $" · {storageTransfers} storage" : "";
+        ImGui.TextDisabled($"Today: {placed} placed · {removed} removed{storedPart} · {moved} moved · {dyed} dyed{storagePart}");
     }
 
     private static void DrawDyeSwatch(byte stainId, int id)

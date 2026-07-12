@@ -11,8 +11,10 @@ public enum HistoryAction
     Rotated,
     Redyed,
     // Appended, not inserted: HistoryAction is serialized by numeric value in history.json,
-    // so the existing five must keep their positions or old saved logs would be misread.
-    Stored, // removed straight into the housing storeroom rather than back to your inventory
+    // so the existing values must keep their positions or old saved logs would be misread.
+    Stored,    // removed straight into the housing storeroom rather than back to your inventory
+    Deposited, // moved from your inventory into the storeroom directly, never placed
+    Withdrawn, // moved from the storeroom into your inventory directly, never placed
 }
 
 public enum HouseLocation
@@ -37,4 +39,5 @@ public readonly record struct HistoryEntry(
     ulong HouseId,           // which house this happened in (for multi-house disambiguation)
     uint TerritoryId,
     bool WhileAway,          // true if detected on entry, i.e. changed since your last visit
-    HouseLocation Location = HouseLocation.Indoor);
+    HouseLocation Location = HouseLocation.Indoor,
+    int Quantity = 1);       // Deposited/Withdrawn only: how many of the item moved

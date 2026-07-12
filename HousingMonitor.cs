@@ -65,6 +65,15 @@ public sealed class HousingMonitor : IDisposable
     private int prevStoreroomItems = -1;
     private HouseLocation prevStoreroomLoc;
 
+    // Item-level storeroom/inventory tracking, for transfers that never touch the room at all
+    // (moving something straight from your bags into the storeroom or back). Separate from the
+    // aggregate count above: that one correlates storeroom growth with a furniture removal from
+    // the room, this one correlates storeroom contents against your regular inventory contents,
+    // so an item leaving one and landing in the other in the same tick is a direct transfer.
+    private Dictionary<uint, int> prevStoreroomContents = new();
+    private Dictionary<uint, int> prevInventoryContents = new();
+    private bool haveStorageBaseline;
+
     private bool dirty;
     private DateTime lastSave = DateTime.MinValue;
 
@@ -105,6 +114,7 @@ public sealed class HousingMonitor : IDisposable
         settleCount = 0;
         pendingDye.Clear();
         prevStoreroomItems = -1;
+        haveStorageBaseline = false;
     }
 
     private void OnUpdate(IFramework framework)
@@ -152,10 +162,17 @@ public sealed class HousingMonitor : IDisposable
             return;
         }
 
+        var houseId = (ulong)manager->GetCurrentHouseId();
+
+        // Storeroom/inventory transfers never touch the furniture layout, so they don't bump
+        // LastUpdate below, check every poll while settled in the same house/location we
+        // already have a baseline for, or the early return right after would skip it entirely.
+        if (haveBaseline && houseId == baselineHouseId && location == baselineLocation)
+            CheckStorageTransfers(houseId, location.Value);
+
         // LastUpdate bumps ~every 200ms when furniture state changes. If it hasn't moved
         // since we last processed, there's nothing to diff, skip the snapshot build.
         var stamp = furnitureManager->LastUpdate;
-        var houseId = (ulong)manager->GetCurrentHouseId();
         if (haveBaseline && houseId == baselineHouseId && location == baselineLocation && stamp == lastStamp)
             return;
         lastStamp = stamp;
@@ -221,6 +238,7 @@ public sealed class HousingMonitor : IDisposable
             settleHouseId = 0;
             settleLastCount = -1;
             settleCount = 0;
+            haveStorageBaseline = false; // different house/location now, storeroom contents reset
             pendingDye.Clear();
             RememberLayout(houseId, location.Value, current);
             return;
@@ -467,6 +485,98 @@ public sealed class HousingMonitor : IDisposable
             }
         }
         return total;
+    }
+
+    private static readonly InventoryType[] RegularInventoryTypes =
+        { InventoryType.Inventory1, InventoryType.Inventory2, InventoryType.Inventory3, InventoryType.Inventory4 };
+
+    /// <summary>
+    /// Item-level companion to <see cref="StoreroomItemCount"/>: notices an item leaving the
+    /// storeroom and landing in your regular inventory (or the reverse) in the same tick, which
+    /// means it moved directly, never touching the room's furniture layout at all. That's
+    /// invisible to everything else here, since Placed/Removed only fire on layout changes.
+    /// Best-effort like the aggregate check: if a read lands mid-transfer it can miss one.
+    /// </summary>
+    private unsafe void CheckStorageTransfers(ulong houseId, HouseLocation location)
+    {
+        var curStore = SnapshotItemContents(27000, 27020);
+        var curInv = SnapshotItemContents(RegularInventoryTypes);
+
+        if (haveStorageBaseline)
+        {
+            var itemIds = new HashSet<uint>(prevStoreroomContents.Keys);
+            itemIds.UnionWith(curStore.Keys);
+
+            foreach (var itemId in itemIds)
+            {
+                var storeDelta = curStore.GetValueOrDefault(itemId) - prevStoreroomContents.GetValueOrDefault(itemId);
+                if (storeDelta == 0)
+                    continue;
+
+                var invDelta = curInv.GetValueOrDefault(itemId) - prevInventoryContents.GetValueOrDefault(itemId);
+
+                // A closed loop: the same item left one place and landed in the other, same
+                // tick. Anything else (storeroom grew with no matching inventory drop) is
+                // covered separately by the aggregate "Stored" check, which correlates it
+                // against a furniture removal from the room instead.
+                if (storeDelta > 0 && invDelta < 0)
+                {
+                    var moved = Math.Min(storeDelta, -invDelta);
+                    if (moved > 0)
+                        LogStorageTransfer(HistoryAction.Deposited, itemId, moved, houseId, location);
+                }
+                else if (storeDelta < 0 && invDelta > 0)
+                {
+                    var moved = Math.Min(-storeDelta, invDelta);
+                    if (moved > 0)
+                        LogStorageTransfer(HistoryAction.Withdrawn, itemId, moved, houseId, location);
+                }
+            }
+        }
+
+        prevStoreroomContents = curStore;
+        prevInventoryContents = curInv;
+        haveStorageBaseline = true;
+    }
+
+    private void LogStorageTransfer(HistoryAction action, uint itemId, int quantity, ulong houseId, HouseLocation location)
+        => AddEntry(new HistoryEntry(DateTime.Now, action, -1, itemId, NameResolver.ResolveItemName(itemId),
+            Vector3.Zero, 0f, null, 0f, 0, 0, houseId, Plugin.ClientState.TerritoryType, false, location, quantity));
+
+    private static unsafe Dictionary<uint, int> SnapshotItemContents(int typeMin, int typeMax)
+    {
+        var counts = new Dictionary<uint, int>();
+        var mgr = InventoryManager.Instance();
+        if (mgr == null)
+            return counts;
+        for (var t = typeMin; t <= typeMax; t++)
+            AddContainerContents(mgr, (InventoryType)t, counts);
+        return counts;
+    }
+
+    private static unsafe Dictionary<uint, int> SnapshotItemContents(InventoryType[] types)
+    {
+        var counts = new Dictionary<uint, int>();
+        var mgr = InventoryManager.Instance();
+        if (mgr == null)
+            return counts;
+        foreach (var t in types)
+            AddContainerContents(mgr, t, counts);
+        return counts;
+    }
+
+    private static unsafe void AddContainerContents(InventoryManager* mgr, InventoryType type, Dictionary<uint, int> counts)
+    {
+        var container = mgr->GetInventoryContainer(type);
+        if (container == null || !container->IsLoaded)
+            return;
+        for (var i = 0; i < container->Size; i++)
+        {
+            var slot = container->GetInventorySlot(i);
+            if (slot == null || slot->ItemId == 0)
+                continue;
+            counts[slot->ItemId] = counts.GetValueOrDefault(slot->ItemId) + slot->Quantity;
+        }
     }
 
     /// <summary>

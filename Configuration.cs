@@ -23,6 +23,9 @@ public class Configuration : IPluginConfiguration
     public bool ShowMoved { get; set; } = true;
     public bool ShowDyed { get; set; } = true;
 
+    /// <summary>Deposited/Withdrawn: items moved straight between your inventory and the storeroom, never placed.</summary>
+    public bool ShowStorageTransfers { get; set; } = true;
+
     /// <summary>Open the log automatically when the housing furnishing menu appears.</summary>
     public bool AutoOpenWithHousing { get; set; } = true;
 
