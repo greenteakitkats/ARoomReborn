@@ -13,10 +13,8 @@ everything used to be.
 ## Features
 
 - Logs every placement, removal, move, rotation, and dye change, each with a timestamp.
-- Shows coordinates for everything. Click one to copy it, then paste it back into
-  BDTH to undo a move.
-- Apply mode (optional): click a coordinate and the item you have selected in
-  layout mode jumps right to it.
+- Shows coordinates for everything. Click one to copy it, or click it with an item
+  selected in layout mode to move that item straight there.
 - Undo button on every move, snaps the selected item straight back to where it
   was, position and facing both, no copying or pasting needed.
 - Item icons and dye color swatches so the log is easy to skim.
@@ -49,8 +47,8 @@ everything used to be.
   you paste back into BDTH to put something back where it was.
 - Use the checkboxes to choose which changes to show, and the search box to find a
   specific item.
-- Turn on Apply mode if you'd rather click a coordinate and have the selected item
-  jump straight there.
+- With an item selected in layout mode, click any coordinate to move that item
+  straight there.
 - On any move, select the item in layout mode and hit its Undo button to send it
   straight back, no need to copy coordinates at all.
 - Type `/houselog dump` to print a quick diagnostics snapshot to `/xllog` (handy
@@ -62,8 +60,8 @@ everything used to be.
   (roof, walls, fence, door, chimney), since those work differently under the hood.
 - It can tell you what changed, but not who did it. The game doesn't share that
   with plugins.
-- Out of the box it only watches and never changes anything, which keeps it in line
-  with Dalamud's plugin rules. Apply mode and the Undo button are the one exception,
+- It mostly just watches and never changes anything, which keeps it in line with
+  Dalamud's plugin rules. Click-to-move and the Undo button are the one exception,
   and even then they only nudge the item you already have selected, exactly the way
   Burning Down the House does.
 

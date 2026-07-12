@@ -112,12 +112,12 @@ update-proof. Strategy:
    with `IncludeFields` and numeric dict keys).
 7. **Auto-open** fires, keys off addon names `HousingGoods` / `HousingLayout`; if it
    doesn't open, those strings need adjusting in `Plugin.cs`.
-8. **Apply mode (the only write path)**, `LayoutWorld.Instance()` + 0x40 =
+8. **Click-to-move / Undo (the only write path)**, `LayoutWorld.Instance()` + 0x40 =
    `HousingStructure` (Mode @0x0, ActiveItem @0x18, per BDTH); writes
    `ActiveItem->Transform.Translation`. Verify the applied position lands where the
    stored coordinate says (the furniture-array position and the layout-instance
    translation should share a coordinate space). Only writes in Rotate mode with an
-   item selected; off by default.
+   item selected.
 
 ## Roadmap
 
