@@ -30,9 +30,22 @@ public static class NameResolver
             return cached;
 
         uint icon = 0;
-        var sheet = Plugin.DataManager.GetExcelSheet<HousingFurniture>();
-        if (sheet.TryGetRow(furnitureId, out var row) && row.Item.IsValid)
-            icon = row.Item.Value.Icon;
+        foreach (var id in CandidateIds(furnitureId))
+        {
+            if (Plugin.DataManager.GetExcelSheet<HousingFurniture>().TryGetRow(id, out var f) && f.Item.IsValid)
+            {
+                icon = f.Item.Value.Icon;
+                if (icon != 0)
+                    break;
+            }
+
+            if (Plugin.DataManager.GetExcelSheet<HousingYardObject>().TryGetRow(id, out var y) && y.Item.IsValid)
+            {
+                icon = y.Item.Value.Icon;
+                if (icon != 0)
+                    break;
+            }
+        }
 
         IconCache[furnitureId] = icon;
         return icon;
@@ -121,14 +134,43 @@ public static class NameResolver
 
     private static string Lookup(uint furnitureId)
     {
-        var sheet = Plugin.DataManager.GetExcelSheet<HousingFurniture>();
-        if (sheet.TryGetRow(furnitureId, out var row) && row.Item.IsValid)
+        // Indoor furnishings and yard objects live in two different sheets (HousingFurniture
+        // rows are 0x20000-masked, HousingYardObject rows 0x30000-masked). Try both, plus the
+        // remasked variants: a BaseId read off a live yard object has been observed carrying
+        // the indoor mask (e.g. 0x20046 for a Planter Box), so the raw id alone can point at
+        // the wrong sheet even when it's genuinely resolvable in the other one.
+        foreach (var id in CandidateIds(furnitureId))
         {
-            var itemName = row.Item.Value.Name.ToString();
-            if (!string.IsNullOrWhiteSpace(itemName))
-                return itemName;
+            if (Plugin.DataManager.GetExcelSheet<HousingFurniture>().TryGetRow(id, out var f) && f.Item.IsValid)
+            {
+                var n = f.Item.Value.Name.ToString();
+                if (!string.IsNullOrWhiteSpace(n))
+                    return n;
+            }
+
+            if (Plugin.DataManager.GetExcelSheet<HousingYardObject>().TryGetRow(id, out var y) && y.Item.IsValid)
+            {
+                var n = y.Item.Value.Name.ToString();
+                if (!string.IsNullOrWhiteSpace(n))
+                    return n;
+            }
         }
 
         return $"Furnishing #{furnitureId}";
+    }
+
+    /// <summary>The id as given, then remasked with the indoor (0x20000) and outdoor (0x30000)
+    /// prefixes, deduplicated, so a lookup works no matter which mask the source carried.</summary>
+    private static IEnumerable<uint> CandidateIds(uint furnitureId)
+    {
+        yield return furnitureId;
+
+        var raw = furnitureId & 0xFFFF;
+        var indoor = 0x20000u | raw;
+        var outdoor = 0x30000u | raw;
+        if (indoor != furnitureId)
+            yield return indoor;
+        if (outdoor != furnitureId)
+            yield return outdoor;
     }
 }

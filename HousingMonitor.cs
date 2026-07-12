@@ -418,14 +418,17 @@ public sealed class HousingMonitor : IDisposable
 
     private static uint DisplayId(FurnitureRecord r) => r.RowId;
 
-    // Outdoors, a RowId that wasn't confirmed off a live game object is a location-mask guess
-    // that can resolve to a confidently WRONG sheet name (a wall-mounted piece typed under the
-    // other mask, say). An honest unknown beats that. Indoors the guess has been reliable, and
-    // anything you're actively editing is loaded (and therefore confirmed) anyway.
+    // NameResolver tries both housing sheets (and both mask variants), so most outdoor ids
+    // resolve now whether or not the object was streamed in. Only when the lookup genuinely
+    // misses AND the id was a location-mask guess (not read off a live object) do we label it
+    // honestly as out of view rather than show a raw number that looks like a name.
     private static string ResolveDisplayName(FurnitureRecord r, HouseLocation location)
-        => location == HouseLocation.Outdoor && !r.RowIdConfirmed
-            ? $"Furnishing #{r.Id} (out of view)"
-            : NameResolver.Resolve(r.RowId);
+    {
+        var name = NameResolver.Resolve(r.RowId);
+        if (location == HouseLocation.Outdoor && !r.RowIdConfirmed && name.StartsWith("Furnishing #"))
+            return $"Furnishing #{r.Id} (out of view)";
+        return name;
+    }
 
     private void LogSimple(HistoryAction action, int index, FurnitureRecord r, ulong houseId, HouseLocation location)
     {
