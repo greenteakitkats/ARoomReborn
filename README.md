@@ -10,6 +10,9 @@ everything used to be.
 
 > By default it just watches and never touches your house.
 
+Originally built for a decorator friend using Claude. 
+Hopefully others find this useful!
+
 ## Features
 
 - Logs every placement, removal, move, rotation, and dye change, each with a timestamp.
